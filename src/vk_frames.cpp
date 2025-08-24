@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <iostream>
-//#include <stdexcept>
+#include <stdexcept>
 #include <fstream>
 #include <algorithm>
 
@@ -34,7 +34,7 @@ void FrameManager::createSwapChain(VkDevice &device, SDL_Window* window, VkSurfa
     swapChainImageFormat = surfaceFormat.format;
     swapChainExtent = extent;
 
-    uint32_t imageCount = std::max(swapChainSupport.capabilities.minImageCount, (uint)MAX_FRAMES_IN_FLIGHT) + 1;
+    uint32_t imageCount = std::max(swapChainSupport.capabilities.minImageCount, (uint32_t)MAX_FRAMES_IN_FLIGHT);
     if (swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount) imageCount = swapChainSupport.capabilities.maxImageCount;
 
     uint32_t queueFamilyIndices[] = {indices.graphicsFamily.value(), indices.presentFamily.value()};
@@ -67,8 +67,7 @@ void FrameManager::createSwapChain(VkDevice &device, SDL_Window* window, VkSurfa
         createInfo.pQueueFamilyIndices = nullptr;
     }
 
-    //if (
-    vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain);// != VK_SUCCESS) throw std::runtime_error("failed to create swap chain!");
+    if (vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain) != VK_SUCCESS) throw std::runtime_error("failed to create swap chain!");
 
     vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
     swapChainImages.resize(imageCount);
@@ -97,8 +96,7 @@ void FrameManager::createImageViews(VkDevice &device)
         createInfo.subresourceRange.baseArrayLayer = 0;
         createInfo.subresourceRange.layerCount = 1;
 
-        //if (
-        vkCreateImageView(device, &createInfo, nullptr, &swapChainImageViews[i]);// != VK_SUCCESS) throw std::runtime_error("failed to create image views!");
+        if (vkCreateImageView(device, &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS) throw std::runtime_error("failed to create image views!");
     }
 }
 void FrameManager::createRenderPass(VkDevice &device)
@@ -141,8 +139,7 @@ void FrameManager::createRenderPass(VkDevice &device)
     renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = &dependency;
 
-    //if (
-    vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass);// != VK_SUCCESS) throw std::runtime_error("failed to create render pass!");
+    if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) throw std::runtime_error("failed to create render pass!");
 }
 void FrameManager::createGraphicsPipeline(VkDevice &device)
 {
@@ -188,33 +185,17 @@ void FrameManager::createGraphicsPipeline(VkDevice &device)
     inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     inputAssembly.primitiveRestartEnable = VK_FALSE;
 
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = (float) swapChainExtent.width;
-    viewport.height = (float) swapChainExtent.height;
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-
-    VkRect2D scissor{};
-    scissor.offset = {0, 0};
-    scissor.extent = swapChainExtent;
-
-    /*
     std::vector<VkDynamicState> dynamicStates = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
 
     VkPipelineDynamicStateCreateInfo dynamicState{};
     dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
     dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
     dynamicState.pDynamicStates = dynamicStates.data();
-    */
 
     VkPipelineViewportStateCreateInfo viewportState{};
     viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
     viewportState.viewportCount = 1;
-    viewportState.pViewports = &viewport;
     viewportState.scissorCount = 1;
-    viewportState.pScissors = &scissor;
 
     VkPipelineRasterizationStateCreateInfo rasterizer{};
     rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
@@ -266,8 +247,7 @@ void FrameManager::createGraphicsPipeline(VkDevice &device)
     pipelineLayoutInfo.pushConstantRangeCount = 0;
     pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
-    //if (
-    vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout);// != VK_SUCCESS) throw std::runtime_error("failed to create pipeline layout!");
+    if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) throw std::runtime_error("failed to create pipeline layout!");
 
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -280,15 +260,14 @@ void FrameManager::createGraphicsPipeline(VkDevice &device)
     pipelineInfo.pMultisampleState = &multisampling;
     pipelineInfo.pDepthStencilState = nullptr;
     pipelineInfo.pColorBlendState = &colorBlending;
-    //pipelineInfo.pDynamicState = &dynamicState;
+    pipelineInfo.pDynamicState = &dynamicState;
     pipelineInfo.layout = pipelineLayout;
     pipelineInfo.renderPass = renderPass;
     pipelineInfo.subpass = 0;
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
     pipelineInfo.basePipelineIndex = -1;
 
-    //if (
-    vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline);// != VK_SUCCESS) throw std::runtime_error("failed to create graphics pipeline!");
+    if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) throw std::runtime_error("failed to create graphics pipeline!");
 
     vkDestroyShaderModule(device, fragShaderModule, nullptr);
     vkDestroyShaderModule(device, vertShaderModule, nullptr);
@@ -310,8 +289,7 @@ void FrameManager::createFramebuffers(VkDevice &device)
         framebufferInfo.height = swapChainExtent.height;
         framebufferInfo.layers = 1;
 
-        //if (
-        vkCreateFramebuffer(device, &framebufferInfo, nullptr, &swapChainFramebuffers[i]);// != VK_SUCCESS) throw std::runtime_error("failed to create framebuffer!");
+        if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) throw std::runtime_error("failed to create framebuffer!");
     }
 }
 void FrameManager::cleanupSwapChain(VkDevice &device)
@@ -358,7 +336,7 @@ VkExtent2D FrameManager::chooseSwapExtent(SDL_Window* window, const VkSurfaceCap
     else
     {
         int width, height;
-        SDL_Vulkan_GetDrawableSize(window, &width, &height);
+        SDL_GetWindowSize(window, &width, &height);
         VkExtent2D actualExtent = {static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
 
         actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
@@ -371,7 +349,7 @@ std::vector<char> FrameManager::readFile(const std::string& filename)
 {
     std::ifstream file(filename, std::ios::ate | std::ios::binary);
 
-    //if (!file.is_open()) throw std::runtime_error("failed to open file!");
+    if (!file.is_open()) throw std::runtime_error("failed to open file!");
 
     size_t fileSize = (size_t) file.tellg();
     std::vector<char> buffer(fileSize);
@@ -390,8 +368,7 @@ VkShaderModule FrameManager::createShaderModule(VkDevice &device, const std::vec
     createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
 
     VkShaderModule shaderModule;
-    //if (
-    vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule);// != VK_SUCCESS) throw std::runtime_error("failed to create shader module!");
+    if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) throw std::runtime_error("failed to create shader module!");
 
     return shaderModule;
 }

@@ -1,5 +1,5 @@
 #include "vk_debug.hpp"
-//#include <stdexcept>
+#include <stdexcept>
 #include <iostream>
 
 void DebugManager::setupDebugMessenger(VkInstance &instance)
@@ -7,8 +7,7 @@ void DebugManager::setupDebugMessenger(VkInstance &instance)
     VkDebugUtilsMessengerCreateInfoEXT createInfo;
     populateDebugMessengerCreateInfo(createInfo);
 
-    //if (
-    CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger);// != VK_SUCCESS) throw std::runtime_error("failed to set up debug messenger!");
+    if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS) throw std::runtime_error("failed to set up debug messenger!");
 }
 void DebugManager::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo)
 {

@@ -1,13 +1,22 @@
-#define VOLK_IMPLEMENTATION
+#include <SDL3/SDL_stdinc.h>
+#include <iostream>
+#include <ostream>
+
+#ifdef _WIN32
+    #define WIN32_LEAN_AND_MEAN
+    #include <windows.h>
+#elif __linux__
+    #include <sched.h>
+#endif
+#include <thread>
+
 #include <volk.h>
 #include <SDL3/SDL_vulkan.h>
 #include <SDL3/SDL_video.h>
-//#include <stdexcept>
+#include <stdexcept>
 #include <SDL3/SDL.h>
 
 #include <cstdlib>
-#include <thread>
-#include <sched.h>
 #include <vector>
 #include <cstdint>
 #include <atomic>
@@ -68,9 +77,9 @@ class Triangle
             SDL_Init(SDL_INIT_VIDEO);
 
             #ifdef __EMSCRIPTEN__
-                window = SDL_CreateWindow("...", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH, HEIGHT, SDL_WINDOW_RESIZABLE);
+                window = SDL_CreateWindow("...", WIDTH, HEIGHT, SDL_WINDOW_RESIZABLE);
             #else
-                window = SDL_CreateWindow("...", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH, HEIGHT, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+                window = SDL_CreateWindow("...", WIDTH, HEIGHT, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
             #endif
         }
 
@@ -78,14 +87,14 @@ class Triangle
         {
             volkInitialize();
 
-            //if (enableValidationLayers && !debugManager.checkValidationLayerSupport(validationLayers)) throw std::runtime_error("validation layers requested, but not available!");
+            if (enableValidationLayers && !debugManager.checkValidationLayerSupport(validationLayers)) throw std::runtime_error("validation layers requested, but not available!");
 
             VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
-            //if (enableValidationLayers) debugManager.populateDebugMessengerCreateInfo(debugCreateInfo);
+            if (enableValidationLayers) debugManager.populateDebugMessengerCreateInfo(debugCreateInfo);
 
             deviceManager.createInstance(window, enableValidationLayers, validationLayers, debugCreateInfo);
             volkLoadInstance(deviceManager.instance);
-            //if (enableValidationLayers) debugManager.setupDebugMessenger(deviceManager.instance);
+            if (enableValidationLayers) debugManager.setupDebugMessenger(deviceManager.instance);
 
             if (!deviceManager.checkPhysicalDevice() || forceOpenGL)
             {
@@ -100,11 +109,11 @@ class Triangle
             //createVertexBuffer();
 
             commandManager.init(deviceManager.device, deviceManager.indices, frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.renderPass);
-            syncManager.createSyncObjects(deviceManager.device, MAX_FRAMES_IN_FLIGHT);
+            syncManager.createSyncObjects(deviceManager.device);
 
             return true;
         }
-        /*
+
         void recreateSwapChain()
         {
             vkDeviceWaitIdle(deviceManager.device);
@@ -115,8 +124,6 @@ class Triangle
             vkFreeCommandBuffers(deviceManager.device, commandManager.commandPool, static_cast<uint32_t>(commandManager.commandBuffers.size()), commandManager.commandBuffers.data());
             commandManager.createCommandBuffers(deviceManager.device, frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.renderPass);
         }
-        */
-
 
         const std::vector<Vertex> vertices =
         {
@@ -134,14 +141,13 @@ class Triangle
             bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
             bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-            //if (
-            vkCreateBuffer(deviceManager.device, &bufferInfo, nullptr, &vertexBuffer);// != VK_SUCCESS) throw std::runtime_error("failed to create vertex buffer!");
+            if (vkCreateBuffer(deviceManager.device, &bufferInfo, nullptr, &vertexBuffer) != VK_SUCCESS) throw std::runtime_error("failed to create vertex buffer!");
         }
 
 
         std::atomic<bool> running = true;
-        //std::atomic<bool> resized = false;
-        alignas(64) uint64_t frameCount = 0;
+        std::atomic<bool> resized = false;
+        std::atomic<Uint32> frameCount = 0;
         std::thread renderThread;
         std::thread windowThread;
 
@@ -149,105 +155,96 @@ class Triangle
         {
             createRenderthread();
 
-            windowThread = std::thread([this]()
             {
-                cpu_set_t cpuset;
-                CPU_ZERO(&cpuset);
-                const int core_id = 2;
-                CPU_SET(core_id, &cpuset);
+                #ifdef _WIN32
+                    HANDLE hThread = GetCurrentThread();
+                    SetThreadAffinityMask(hThread, 1 << 1);
+                    SetThreadPriority(hThread, THREAD_PRIORITY_HIGHEST);
+                #elif __linux__
+                    cpu_set_t cpuset;
+                    CPU_ZERO(&cpuset);
+                    const int core_id = 19;
+                    CPU_SET(core_id, &cpuset);
 
-                const pthread_t thread = pthread_self();
-                pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
+                    const pthread_t thread = pthread_self();
+                    pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
 
-                sched_param sch_params;
-                sch_params.sched_priority = sched_get_priority_max(SCHED_BATCH);
-                pthread_setschedparam(thread, SCHED_BATCH, &sch_params);
+                    sched_param sch_params;
+                    sch_params.sched_priority = sched_get_priority_max(SCHED_RR);
+                    pthread_setschedparam(thread, SCHED_RR, &sch_params);
+                #endif
+            }
 
-                Uint32 lastTime = SDL_GetTicks();
-                char titleBuffer[64];
+            Uint32 lastTime = SDL_GetTicks();
+            char titleBuffer[64];
 
-                const int targetFPS = 20;
-                const int frameDelay = 1000 / targetFPS;
+            const int targetFPS = 20;
+            const int frameDelay = 1000 / targetFPS;
 
-                while (running)
+            while (running)
+            {
+                SDL_Event event;
+                while (SDL_PollEvent(&event))
                 {
-                    SDL_Event event;
-                    while (SDL_PollEvent(&event))
+                    switch (event.type)
                     {
-                        switch (event.type)
-                        {
-                            case SDL_EVENT_QUIT:
-                                running = false;
-                                break;
-                            /*case SDL_WINDOWEVENT:
-                                if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED)
-                                {
-                                    resized = true;
-                                }
-                                break;*/
-                        }
+                        case SDL_EVENT_QUIT:
+                            running = false;
+                            break;
+                        case SDL_EVENT_WINDOW_RESIZED:
+                            resized = true;
+                            break;
                     }
-
-                    Uint32 currentTime = SDL_GetTicks();
-                    Uint32 frametime = currentTime - lastTime;
-
-                    if (frametime >= 1000)
-                    {
-                        float fps = 1000.0f * (float)frameCount / (float)frametime;
-
-                        std::snprintf(titleBuffer, 64, "FPS: %f", fps);
-                        SDL_SetWindowTitle(window, titleBuffer);
-                        lastTime = currentTime;
-                        frameCount = 0u;
-                    }
-                    SDL_Delay(frameDelay);
                 }
-            });
 
-            windowThread.join();
+                Uint32 currentTime = SDL_GetTicks();
+                Uint32 frametime = currentTime - lastTime;
+
+                if (frametime >= 1000)
+                {
+                    float fps = 1000.0f * (float)frameCount / (float)frametime;
+
+                    std::snprintf(titleBuffer, 64, "FPS: %f", fps);
+                    SDL_SetWindowTitle(window, titleBuffer);
+                    lastTime = currentTime;
+                    frameCount = 0u;
+                }
+                SDL_Delay(frameDelay);
+            }
+
             renderThread.join();
         }
         void createRenderthread()
         {
             renderThread = std::thread([this]()
             {
-                cpu_set_t cpuset;
-                CPU_ZERO(&cpuset);
-                const int core_id = 1;
-                CPU_SET(core_id, &cpuset);
+                {
+                    #ifdef _WIN32
+                        HANDLE hThread = GetCurrentThread();
+                        SetThreadAffinityMask(hThread, 1 << 1);
+                        SetThreadPriority(hThread, THREAD_PRIORITY_HIGHEST);
+                    #elif __linux__
+                        cpu_set_t cpuset;
+                        CPU_ZERO(&cpuset);
+                        const int core_id = 19;
+                        CPU_SET(core_id, &cpuset);
 
-                const pthread_t thread = pthread_self();
-                pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
+                        const pthread_t thread = pthread_self();
+                        pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
 
-                sched_param sch_params;
-                sch_params.sched_priority = sched_get_priority_max(SCHED_FIFO);
-                pthread_setschedparam(thread, SCHED_FIFO, &sch_params);
+                        sched_param sch_params;
+                        sch_params.sched_priority = sched_get_priority_max(SCHED_RR);
+                        pthread_setschedparam(thread, SCHED_RR, &sch_params);
+                    #endif
+                }
 
-                const VkSwapchainKHR swapChains[] = {frameManager.swapChain};
-                VkSemaphore signalSemaphores[1];
-
-                VkCommandBufferSubmitInfo cmdBufInfo{};
-                cmdBufInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-                VkSemaphoreSubmitInfo waitInfo{};
-                waitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+                VkCommandBufferSubmitInfo cmdBufInfo{VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO};
+                VkSemaphoreSubmitInfo waitInfo{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
                 waitInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-                VkSemaphoreSubmitInfo signalInfo{};
-                signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+                VkSemaphoreSubmitInfo signalInfo{VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO};
                 signalInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
 
-                uint32_t imageIndex;
-                uint32_t currentFrame = 0;
-
-                VkPresentInfoKHR presentInfo =
-                {
-                    .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-                    .waitSemaphoreCount = 1,
-                    .swapchainCount = 1,
-                    .pSwapchains = swapChains,
-                    .pResults = nullptr
-                };
-
-                const VkSubmitInfo2 submitInfo
+                VkSubmitInfo2 submitInfo =
                 {
                     .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2,
                     .waitSemaphoreInfoCount = 1,
@@ -258,44 +255,54 @@ class Triangle
                     .pSignalSemaphoreInfos = &signalInfo,
                 };
 
+                VkPresentInfoKHR presentInfo =
+                {
+                    .sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+                    .waitSemaphoreCount = 1,
+                    .swapchainCount = 1,
+                    .pResults = nullptr
+                };
+
+                Uint32 imageIndex;
+                Uint32 currentFrame = 0;
+
                 while (running)
                 {
-                    //VkFence &fence = syncManager.inFlightFences[currentFrame];
-                    //vkWaitForFences(deviceManager.device, 1, &fence, VK_TRUE, UINT64_MAX);
+                    VkFence fence = syncManager.inFlightFences[currentFrame];
+                    VkSemaphore imgAvailable = syncManager.imageAvailableSemaphores[currentFrame];
 
-                    //VkResult result =
-                    vkAcquireNextImageKHR(deviceManager.device, frameManager.swapChain, UINT64_MAX, syncManager.imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
-                    /*if (result == VK_ERROR_OUT_OF_DATE_KHR)
+                    vkWaitForFences(deviceManager.device, 1, &fence, VK_TRUE, UINT64_MAX);
+                    VkResult result = vkAcquireNextImageKHR(deviceManager.device, frameManager.swapChain, UINT64_MAX, imgAvailable, VK_NULL_HANDLE, &imageIndex);
+                    if (result == VK_ERROR_OUT_OF_DATE_KHR)
                     {
                         recreateSwapChain();
-                        return;
+                        continue;
                     }
                     else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
                     {
                         throw std::runtime_error("failed to acquire swap chain image!");
-                    }*/
+                    }
+                    vkResetFences(deviceManager.device, 1, &fence);
 
-                    //vkResetFences(deviceManager.device, 1, &fence);
+                    VkSemaphore imgRendered = syncManager.renderFinishedSemaphores[imageIndex];
 
                     cmdBufInfo.commandBuffer = commandManager.commandBuffers[imageIndex];
-                    waitInfo.semaphore = syncManager.imageAvailableSemaphores[currentFrame];
-                    signalInfo.semaphore = syncManager.renderFinishedSemaphores[currentFrame];
-                    vkQueueSubmit2(deviceManager.graphicsQueue, 1, &submitInfo, syncManager.inFlightFences[currentFrame]);
+                    waitInfo.semaphore = imgAvailable;
+                    signalInfo.semaphore = imgRendered;
+                    vkQueueSubmit2(deviceManager.graphicsQueue, 1, &submitInfo, fence);
 
-                    signalSemaphores[0] = {syncManager.renderFinishedSemaphores[currentFrame]};
-                    presentInfo.pWaitSemaphores = signalSemaphores;
-                    presentInfo.pImageIndices = &imageIndex;
-
-                    //result =
-                    vkQueuePresentKHR(deviceManager.presentQueue, &presentInfo);
-                    /*if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || resized.exchange(false))
+                    presentInfo.pWaitSemaphores = &imgRendered;
+                    presentInfo.pImageIndices   = &imageIndex;
+                    presentInfo.pSwapchains     = &frameManager.swapChain,
+                    result = vkQueuePresentKHR(deviceManager.presentQueue, &presentInfo);
+                    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || resized.exchange(false))
                     {
                         recreateSwapChain();
                     }
                     else if (result != VK_SUCCESS)
                     {
                         throw std::runtime_error("failed to present swap chain image!");
-                    }*/
+                    }
 
                     currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
                     frameCount++;
@@ -308,13 +315,7 @@ class Triangle
             vkDeviceWaitIdle(deviceManager.device);
             frameManager.cleanupSwapChain(deviceManager.device);
             frameManager.cleanupPipeline(deviceManager.device);
-
-            for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-            {
-                vkDestroySemaphore(deviceManager.device, syncManager.renderFinishedSemaphores[i], nullptr);
-                vkDestroySemaphore(deviceManager.device, syncManager.imageAvailableSemaphores[i], nullptr);
-                vkDestroyFence(deviceManager.device, syncManager.inFlightFences[i], nullptr);
-            }
+            syncManager.cleanupSyncObjects(deviceManager.device);
 
             vkDestroyCommandPool(deviceManager.device, commandManager.commandPool, nullptr);
             vkDestroyDevice(deviceManager.device, nullptr);

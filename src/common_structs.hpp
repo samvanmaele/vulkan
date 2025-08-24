@@ -5,7 +5,7 @@
 #include <glm/glm.hpp>
 #include <array>
 
-const int MAX_FRAMES_IN_FLIGHT = 7;
+const int MAX_FRAMES_IN_FLIGHT = 3;
 const int WIDTH = 200;
 const int HEIGHT = 200;
 

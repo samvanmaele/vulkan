@@ -1,5 +1,5 @@
 #include "vk_command.hpp"
-//#include <stdexcept>
+#include <stdexcept>
 
 void CommandManager::init(VkDevice &device, QueueFamilyIndices &indices, size_t swapChainSize, std::vector<VkFramebuffer> &swapChainFramebuffers, VkExtent2D &swapChainExtent, VkPipeline &graphicsPipeline, VkRenderPass &renderPass)
 {
@@ -13,8 +13,7 @@ void CommandManager::createCommandPool(VkDevice &device, QueueFamilyIndices &ind
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     poolInfo.queueFamilyIndex = indices.graphicsFamily.value();
 
-    //if (
-    vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool);// != VK_SUCCESS) throw std::runtime_error("failed to create command pool!");
+    if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) throw std::runtime_error("failed to create command pool!");
 }
 void CommandManager::createCommandBuffers(VkDevice &device, size_t swapchainSize, std::vector<VkFramebuffer> &swapChainFramebuffers, VkExtent2D &swapChainExtent, VkPipeline &graphicsPipeline, VkRenderPass &renderPass)
 {
@@ -26,8 +25,7 @@ void CommandManager::createCommandBuffers(VkDevice &device, size_t swapchainSize
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
     allocInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
 
-    //if (
-    vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data());// != VK_SUCCESS) throw std::runtime_error("failed to allocate command buffers!");
+    if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()) != VK_SUCCESS) throw std::runtime_error("failed to allocate command buffers!");
 
     for (size_t i = 0; i < commandBuffers.size(); i++)
     {
@@ -39,10 +37,9 @@ void CommandManager::recordCommandBuffer(VkCommandBuffer &commandBuffer, VkFrame
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
-    beginInfo.pInheritanceInfo = nullptr; // Optional
+    beginInfo.pInheritanceInfo = nullptr;
 
-    //if (
-    vkBeginCommandBuffer(commandBuffer, &beginInfo);// != VK_SUCCESS) throw std::runtime_error("failed to begin recording command buffer!");
+    if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) throw std::runtime_error("failed to begin recording command buffer!");
 
     VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
 
@@ -58,7 +55,6 @@ void CommandManager::recordCommandBuffer(VkCommandBuffer &commandBuffer, VkFrame
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
-    /*
     VkViewport viewport{};
     viewport.x = 0.0f;
     viewport.y = 0.0f;
@@ -72,11 +68,9 @@ void CommandManager::recordCommandBuffer(VkCommandBuffer &commandBuffer, VkFrame
     scissor.offset = {0, 0};
     scissor.extent = swapChainExtent;
     vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-    */
 
     vkCmdDraw(commandBuffer, 3, 1, 0, 0);
     vkCmdEndRenderPass(commandBuffer);
 
-    //if (
-    vkEndCommandBuffer(commandBuffer);// != VK_SUCCESS) throw std::runtime_error("failed to record command buffer!");
+    if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) throw std::runtime_error("failed to record command buffer!");
 }

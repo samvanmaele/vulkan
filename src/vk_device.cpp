@@ -6,7 +6,7 @@
 #include <set>
 #include <vector>
 #include <vulkan/vulkan_core.h>
-//#include <stdexcept>
+#include <stdexcept>
 
 void DeviceManager::createInstance(SDL_Window* window, bool enableValidationLayers, std::vector<const char*> validationLayers, VkDebugUtilsMessengerCreateInfoEXT &debugCreateInfo)
 {
@@ -38,15 +38,19 @@ void DeviceManager::createInstance(SDL_Window* window, bool enableValidationLaye
         createInfo.pNext = nullptr;
     }
 
-    //if (
-    vkCreateInstance(&createInfo, nullptr, &instance);// != VK_SUCCESS) throw std::runtime_error("failed to create instance!");
+    if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) throw std::runtime_error("failed to create instance!");
     SDL_Vulkan_CreateSurface(window, instance, nullptr, &surface);
 }
 std::vector<const char*> DeviceManager::getRequiredExtensions(bool enableValidationLayers, SDL_Window* window)
 {
     Uint32 sdlExtensionCount = 0;
     const char* const* sdlExtensions = SDL_Vulkan_GetInstanceExtensions(&sdlExtensionCount);
-    std::vector<const char*> extensions; sdlExtensions
+    std::vector<const char*> extensions;
+    for (Uint32 i = 0; i < sdlExtensionCount; ++i)
+    {
+        extensions.push_back(sdlExtensions[i]);
+    }
+
     if (enableValidationLayers) extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
     return extensions;
@@ -70,7 +74,7 @@ bool DeviceManager::checkPhysicalDevice()
     }
 
     if (candidates.rbegin()->first > 0) physicalDevice = candidates.rbegin()->second;
-    //else throw std::runtime_error("failed to find a suitable GPU!");
+    else throw std::runtime_error("failed to find a suitable GPU!");
 
     VkPhysicalDeviceProperties props;
     vkGetPhysicalDeviceProperties(physicalDevice, &props);
@@ -207,8 +211,7 @@ void DeviceManager::createLogicalDevice(QueueFamilyIndices &indices, bool enable
         createInfo.enabledLayerCount = 0;
     }
 
-    //if (
-    vkCreateDevice(physicalDevice, &createInfo, nullptr, &device);// != VK_SUCCESS) throw std::runtime_error("failed to create logical device!");
+    if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) throw std::runtime_error("failed to create logical device!");
 
     vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
     vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
