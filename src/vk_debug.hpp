@@ -1,14 +1,13 @@
 #pragma once
 #include <volk.h>
 #include <SDL3/SDL_vulkan.h>
-#include <vector>
 
 class DebugManager
 {
     public:
         void setupDebugMessenger(VkInstance &instance);
         void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
-        bool checkValidationLayerSupport(const std::vector<const char*> &validationLayers);
+        bool checkValidationLayerSupport();
         void DestroyDebugUtilsMessengerEXT(VkInstance instance, const VkAllocationCallbacks* pAllocator);
 
     private:

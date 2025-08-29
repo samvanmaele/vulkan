@@ -16,16 +16,16 @@ class DeviceManager
         VkQueue presentQueue;
         QueueFamilyIndices indices;
 
-        void createInstance(SDL_Window* window, bool enableValidationLayers, std::vector<const char*> validationLayers, VkDebugUtilsMessengerCreateInfoEXT &debugCreateInfo);
+        void createInstance(SDL_Window* window, VkDebugUtilsMessengerCreateInfoEXT &debugCreateInfo);
         bool checkPhysicalDevice();
         int rateDeviceSuitability(VkPhysicalDevice physicalDevice);
         SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice physicalDevice);
         bool checkDeviceExtensionSupport(VkPhysicalDevice physicalDevice);
         QueueFamilyIndices findQueueFamilies(VkPhysicalDevice physicalDevice);
-        void createLogicalDevice(QueueFamilyIndices &indices, bool enableValidationLayers, std::vector<const char*> validationLayers);
+        void createLogicalDevice(QueueFamilyIndices &indices);
 
     private:
         const std::vector<const char*> deviceExtensions = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
 
-        std::vector<const char*> getRequiredExtensions(bool enableValidationLayers, SDL_Window* window);
+        std::vector<const char*> getRequiredExtensions(SDL_Window* window);
 };

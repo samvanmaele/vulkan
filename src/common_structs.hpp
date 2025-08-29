@@ -9,6 +9,15 @@ const int MAX_FRAMES_IN_FLIGHT = 3;
 const int WIDTH = 200;
 const int HEIGHT = 200;
 
+const std::vector<const char*> validationLayers = {"VK_LAYER_KHRONOS_validation"};
+#ifdef NDEBUG
+    const bool enableValidationLayers = false;
+#else
+    const bool enableValidationLayers = true;
+#endif
+
+const bool forceOpenGL = false;
+
 struct QueueFamilyIndices
 {
     std::optional<uint32_t> graphicsFamily;

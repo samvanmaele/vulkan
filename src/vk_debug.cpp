@@ -2,6 +2,8 @@
 #include <stdexcept>
 #include <iostream>
 
+#include "common_structs.hpp"
+
 void DebugManager::setupDebugMessenger(VkInstance &instance)
 {
     VkDebugUtilsMessengerCreateInfoEXT createInfo;
@@ -28,7 +30,7 @@ VkResult DebugManager::CreateDebugUtilsMessengerEXT(VkInstance instance, const V
     if (func != nullptr) {return func(instance, pCreateInfo, pAllocator, pDebugMessenger);}
     else                 {return VK_ERROR_EXTENSION_NOT_PRESENT;}
 }
-bool DebugManager::checkValidationLayerSupport(const std::vector<const char*> &validationLayers)
+bool DebugManager::checkValidationLayerSupport()
 {
     uint32_t layerCount;
     vkEnumerateInstanceLayerProperties(&layerCount, nullptr);

@@ -8,7 +8,7 @@
 #include <vulkan/vulkan_core.h>
 #include <stdexcept>
 
-void DeviceManager::createInstance(SDL_Window* window, bool enableValidationLayers, std::vector<const char*> validationLayers, VkDebugUtilsMessengerCreateInfoEXT &debugCreateInfo)
+void DeviceManager::createInstance(SDL_Window* window, VkDebugUtilsMessengerCreateInfoEXT &debugCreateInfo)
 {
     VkApplicationInfo appInfo{};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -18,7 +18,7 @@ void DeviceManager::createInstance(SDL_Window* window, bool enableValidationLaye
     appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
     appInfo.apiVersion = VK_API_VERSION_1_3;
 
-    auto extensions = getRequiredExtensions(enableValidationLayers, window);
+    auto extensions = getRequiredExtensions(window);
 
     VkInstanceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -41,12 +41,12 @@ void DeviceManager::createInstance(SDL_Window* window, bool enableValidationLaye
     if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) throw std::runtime_error("failed to create instance!");
     SDL_Vulkan_CreateSurface(window, instance, nullptr, &surface);
 }
-std::vector<const char*> DeviceManager::getRequiredExtensions(bool enableValidationLayers, SDL_Window* window)
+std::vector<const char*> DeviceManager::getRequiredExtensions(SDL_Window* window)
 {
-    Uint32 sdlExtensionCount = 0;
+    uint32_t sdlExtensionCount = 0;
     const char* const* sdlExtensions = SDL_Vulkan_GetInstanceExtensions(&sdlExtensionCount);
     std::vector<const char*> extensions;
-    for (Uint32 i = 0; i < sdlExtensionCount; ++i)
+    for (uint32_t i = 0; i < sdlExtensionCount; ++i)
     {
         extensions.push_back(sdlExtensions[i]);
     }
@@ -55,7 +55,6 @@ std::vector<const char*> DeviceManager::getRequiredExtensions(bool enableValidat
 
     return extensions;
 }
-
 bool DeviceManager::checkPhysicalDevice()
 {
     uint32_t deviceCount = 0;
@@ -169,8 +168,7 @@ QueueFamilyIndices DeviceManager::findQueueFamilies(VkPhysicalDevice physicalDev
 
     return indices;
 }
-
-void DeviceManager::createLogicalDevice(QueueFamilyIndices &indices, bool enableValidationLayers, std::vector<const char*> validationLayers)
+void DeviceManager::createLogicalDevice(QueueFamilyIndices &indices)
 {
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
     std::set<uint32_t> uniqueQueueFamilies = {indices.graphicsFamily.value(), indices.presentFamily.value()};
