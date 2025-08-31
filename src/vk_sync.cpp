@@ -1,8 +1,5 @@
 #include "vk_sync.hpp"
-#include <stdexcept>
-#include <vulkan/vulkan_core.h>
-
-#include "common_structs.hpp"
+#include "common.hpp"
 
 void SyncManager::createSyncObjects(VkDevice &device)
 {
@@ -19,15 +16,9 @@ void SyncManager::createSyncObjects(VkDevice &device)
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
-        if
-        (
-            vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
-            vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
-            vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS
-        )
-        {
-            throw std::runtime_error("failed to create synchronization objects for a frame!");
-        }
+        vk_check(vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]), "failed to create synchronization objects for a frame!");
+        vk_check(vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]), "failed to create synchronization objects for a frame!");
+        vk_check(vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences[i]), "failed to create synchronization objects for a frame!");
     }
 }
 void SyncManager::cleanupSyncObjects(VkDevice &device)

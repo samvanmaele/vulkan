@@ -1,6 +1,5 @@
 #pragma once
 #include <volk.h>
-#include <SDL3/SDL_vulkan.h>
 
 class DebugManager
 {

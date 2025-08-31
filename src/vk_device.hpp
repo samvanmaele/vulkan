@@ -1,9 +1,6 @@
 #pragma once
 #include <SDL3/SDL_video.h>
-#include <volk.h>
-#include <vector>
-
-#include "common_structs.hpp"
+#include "common.hpp"
 
 class DeviceManager
 {

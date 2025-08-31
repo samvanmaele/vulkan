@@ -1,8 +1,5 @@
 #pragma once
-#include <volk.h>
-#include <vector>
-
-#include "common_structs.hpp"
+#include "common.hpp"
 
 class CommandManager
 {
@@ -10,8 +7,8 @@ class CommandManager
         VkCommandPool commandPool;
         std::vector<VkCommandBuffer> commandBuffers;
 
-        void init(VkDevice &device, QueueFamilyIndices &indices, size_t swapChainSize, std::vector<VkFramebuffer> &swapChainFramebuffers, VkExtent2D &swapChainExtent, VkPipeline &graphicsPipeline, VkRenderPass &renderPass, VkBuffer vertexBuffer, VkBuffer indexBuffer, size_t indicesSize);
+        void init(VkDevice &device, QueueFamilyIndices &indices, size_t swapChainSize, std::vector<VkFramebuffer> &swapChainFramebuffers, VkExtent2D &swapChainExtent, VkPipeline &graphicsPipeline, VkPipelineLayout pipelineLayout, VkRenderPass &renderPass, VkBuffer vertexBuffer, VkBuffer indexBuffer, size_t indicesSize, std::vector<VkDescriptorSet> descriptorSets);
         void createCommandPool(VkDevice &device, QueueFamilyIndices &indices);
-        void createCommandBuffers(VkDevice &device, size_t swapchainSize, std::vector<VkFramebuffer> &swapChainFramebuffers, VkExtent2D &swapChainExtent, VkPipeline &graphicsPipeline, VkRenderPass &renderPass, VkBuffer vertexBuffer, VkBuffer indexBuffer, size_t indicesSize);
-        void recordCommandBuffer(VkCommandBuffer &commandBuffer, VkFramebuffer &swapChainFramebuffer, VkExtent2D &swapChainExtent, VkPipeline &graphicsPipeline, VkRenderPass &renderPass, VkBuffer vertexBuffer, VkBuffer indexBuffer, size_t indicesSize);
+        void createCommandBuffers(VkDevice &device, size_t swapchainSize, std::vector<VkFramebuffer> &swapChainFramebuffers, VkExtent2D &swapChainExtent, VkPipeline &graphicsPipeline, VkPipelineLayout pipelineLayout, VkRenderPass &renderPass, VkBuffer vertexBuffer, VkBuffer indexBuffer, size_t indicesSize, std::vector<VkDescriptorSet> descriptorSets);
+        void recordCommandBuffer(VkCommandBuffer &commandBuffer, VkFramebuffer &swapChainFramebuffer, VkExtent2D &swapChainExtent, VkPipeline &graphicsPipeline, VkPipelineLayout pipelineLayout, VkRenderPass &renderPass, VkBuffer vertexBuffer, VkBuffer indexBuffer, size_t indicesSize, VkDescriptorSet descriptorSet);
 };

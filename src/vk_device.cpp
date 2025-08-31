@@ -2,11 +2,7 @@
 #include <SDL3/SDL_vulkan.h>
 #include <iostream>
 #include <map>
-#include <ostream>
 #include <set>
-#include <vector>
-#include <vulkan/vulkan_core.h>
-#include <stdexcept>
 
 void DeviceManager::createInstance(SDL_Window* window, VkDebugUtilsMessengerCreateInfoEXT &debugCreateInfo)
 {
@@ -38,7 +34,7 @@ void DeviceManager::createInstance(SDL_Window* window, VkDebugUtilsMessengerCrea
         createInfo.pNext = nullptr;
     }
 
-    if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) throw std::runtime_error("failed to create instance!");
+    vk_check(vkCreateInstance(&createInfo, nullptr, &instance), "failed to create instance!");
     SDL_Vulkan_CreateSurface(window, instance, nullptr, &surface);
 }
 std::vector<const char*> DeviceManager::getRequiredExtensions(SDL_Window* window)
@@ -209,7 +205,7 @@ void DeviceManager::createLogicalDevice(QueueFamilyIndices &indices)
         createInfo.enabledLayerCount = 0;
     }
 
-    if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) throw std::runtime_error("failed to create logical device!");
+    vk_check(vkCreateDevice(physicalDevice, &createInfo, nullptr, &device), "failed to create logical device!");
 
     vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
     vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);

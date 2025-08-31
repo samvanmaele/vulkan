@@ -1,21 +1,14 @@
 #include "vk_frames.hpp"
-#include <SDL3/SDL_video.h>
-#include <SDL3/SDL_vulkan.h>
 #include <algorithm>
-#include <cstdint>
-#include <iostream>
-#include <stdexcept>
 #include <fstream>
-#include <algorithm>
+#include <vulkan/vulkan_core.h>
 
-#include "common_structs.hpp"
-
-void FrameManager::init(VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, SwapChainSupportDetails &swapChainSupport)
+void FrameManager::init(VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, SwapChainSupportDetails &swapChainSupport, VkDescriptorSetLayout descriptorSetLayout)
 {
     createSwapChain(device, window, surface, indices, swapChainSupport);
     createImageViews(device);
     createRenderPass(device);
-    createGraphicsPipeline(device);
+    createGraphicsPipeline(device, descriptorSetLayout);
     createFramebuffers(device);
 }
 void FrameManager::reinit(VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, SwapChainSupportDetails &swapChainSupport)
@@ -68,7 +61,7 @@ void FrameManager::createSwapChain(VkDevice &device, SDL_Window* window, VkSurfa
         createInfo.pQueueFamilyIndices = nullptr;
     }
 
-    if (vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain) != VK_SUCCESS) throw std::runtime_error("failed to create swap chain!");
+    vk_check(vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain), "failed to create swap chain!");
 
     vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
     swapChainImages.resize(imageCount);
@@ -97,7 +90,7 @@ void FrameManager::createImageViews(VkDevice &device)
         createInfo.subresourceRange.baseArrayLayer = 0;
         createInfo.subresourceRange.layerCount = 1;
 
-        if (vkCreateImageView(device, &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS) throw std::runtime_error("failed to create image views!");
+        vk_check(vkCreateImageView(device, &createInfo, nullptr, &swapChainImageViews[i]), "failed to create image views!");
     }
 }
 void FrameManager::createRenderPass(VkDevice &device)
@@ -140,9 +133,9 @@ void FrameManager::createRenderPass(VkDevice &device)
     renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = &dependency;
 
-    if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) throw std::runtime_error("failed to create render pass!");
+    vk_check(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass), "failed to create render pass!");
 }
-void FrameManager::createGraphicsPipeline(VkDevice &device)
+void FrameManager::createGraphicsPipeline(VkDevice &device, VkDescriptorSetLayout descriptorSetLayout)
 {
     auto vertShaderCode = readFile("shaders/triangle.vert.spv");
     auto fragShaderCode = readFile("shaders/triangle.frag.spv");
@@ -196,7 +189,7 @@ void FrameManager::createGraphicsPipeline(VkDevice &device)
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.lineWidth = 1.0f;
     rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE;
+    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
     rasterizer.depthBiasEnable = VK_FALSE;
     rasterizer.depthBiasConstantFactor = 0.0f;
     rasterizer.depthBiasClamp = 0.0f;
@@ -234,12 +227,12 @@ void FrameManager::createGraphicsPipeline(VkDevice &device)
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 0;
-    pipelineLayoutInfo.pSetLayouts = nullptr;
+    pipelineLayoutInfo.setLayoutCount = 1;
+    pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
     pipelineLayoutInfo.pushConstantRangeCount = 0;
     pipelineLayoutInfo.pPushConstantRanges = nullptr;
 
-    if (vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) throw std::runtime_error("failed to create pipeline layout!");
+    vk_check(vkCreatePipelineLayout(device, &pipelineLayoutInfo, nullptr, &pipelineLayout), "failed to create pipeline layout!");
 
     VkGraphicsPipelineCreateInfo pipelineInfo{};
     pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -259,7 +252,7 @@ void FrameManager::createGraphicsPipeline(VkDevice &device)
     pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
     pipelineInfo.basePipelineIndex = -1;
 
-    if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline) != VK_SUCCESS) throw std::runtime_error("failed to create graphics pipeline!");
+    vk_check(vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &graphicsPipeline), "failed to create graphics pipeline!");
 
     vkDestroyShaderModule(device, fragShaderModule, nullptr);
     vkDestroyShaderModule(device, vertShaderModule, nullptr);
@@ -281,7 +274,7 @@ void FrameManager::createFramebuffers(VkDevice &device)
         framebufferInfo.height = swapChainExtent.height;
         framebufferInfo.layers = 1;
 
-        if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) throw std::runtime_error("failed to create framebuffer!");
+        vk_check(vkCreateFramebuffer(device, &framebufferInfo, nullptr, &swapChainFramebuffers[i]), "failed to create framebuffer!");
     }
 }
 void FrameManager::cleanupSwapChain(VkDevice &device)
@@ -360,7 +353,7 @@ VkShaderModule FrameManager::createShaderModule(VkDevice &device, const std::vec
     createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
 
     VkShaderModule shaderModule;
-    if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) throw std::runtime_error("failed to create shader module!");
+    vk_check(vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule), "failed to create shader module!");
 
     return shaderModule;
 }

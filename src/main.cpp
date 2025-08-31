@@ -1,5 +1,4 @@
 #include <SDL3/SDL_stdinc.h>
-#include <cmath>
 
 #ifdef _WIN32
     #define WIN32_LEAN_AND_MEAN
@@ -20,10 +19,11 @@
 #include <cstdint>
 #include <atomic>
 
-#include "common_structs.hpp"
+#include "common.hpp"
 #include "vk_debug.hpp"
 #include "vk_device.hpp"
 #include "vk_frames.hpp"
+#include "vk_buffers.hpp"
 #include "vk_command.hpp"
 #include "vk_sync.hpp"
 
@@ -56,14 +56,10 @@ class Triangle
     private:
         SDL_Window* window;
 
-        VkBuffer vertexBuffer;
-        VkDeviceMemory vertexBufferMemory;
-        VkBuffer indexBuffer;
-        VkDeviceMemory indexBufferMemory;
-
         DebugManager debugManager;
         DeviceManager deviceManager;
         FrameManager frameManager;
+        BufferManager bufferManager;
         CommandManager commandManager;
         SyncManager syncManager;
 
@@ -93,14 +89,18 @@ class Triangle
             if (!deviceManager.checkPhysicalDevice() || forceOpenGL) return false;
 
             deviceManager.createLogicalDevice(deviceManager.indices);
+            bufferManager.createDescriptorSetLayout(deviceManager.device);
 
             SwapChainSupportDetails swapChainSupport = deviceManager.querySwapChainSupport(deviceManager.physicalDevice);
-            frameManager.init(deviceManager.device, window, deviceManager.surface, deviceManager.indices, swapChainSupport);
+            frameManager.init(deviceManager.device, window, deviceManager.surface, deviceManager.indices, swapChainSupport, bufferManager.descriptorSetLayout);
 
-            createVertexBuffer();
-            createIndexBuffer();
+            bufferManager.createVertexBuffer(deviceManager.physicalDevice, deviceManager.device, deviceManager.indices, deviceManager.graphicsQueue);
+            bufferManager.createIndexBuffer(deviceManager.physicalDevice, deviceManager.device, deviceManager.indices, deviceManager.graphicsQueue);
+            bufferManager.createUniformBuffers(deviceManager.physicalDevice, deviceManager.device);
+            bufferManager.createDescriptorPool(deviceManager.device);
+            bufferManager.createDescriptorSets(deviceManager.device);
 
-            commandManager.init(deviceManager.device, deviceManager.indices, frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.renderPass, vertexBuffer, indexBuffer, indices.size());
+            commandManager.init(deviceManager.device, deviceManager.indices, frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.renderPass, bufferManager.vertexBuffer, bufferManager.indexBuffer, bufferManager.indices.size(), bufferManager.descriptorSets);
             syncManager.createSyncObjects(deviceManager.device);
 
             return true;
@@ -113,156 +113,7 @@ class Triangle
             frameManager.reinit(deviceManager.device, window, deviceManager.surface, deviceManager.indices, swapChainSupport);
 
             vkFreeCommandBuffers(deviceManager.device, commandManager.commandPool, static_cast<uint32_t>(commandManager.commandBuffers.size()), commandManager.commandBuffers.data());
-            commandManager.createCommandBuffers(deviceManager.device, frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.renderPass, vertexBuffer, indexBuffer, indices.size());
-        }
-
-        float rotX(float x)
-        {
-            return (std::cos(x) - std::sin(x)) * 0.5f;
-        }
-        float rotY(float y)
-        {
-            return (std::cos(y) + std::sin(y)) * 0.5f;
-        }
-
-        const std::vector<Vertex> vertices =
-        {
-            {{0, 0}, {1.0f, 0.0f, 0.0f}},
-            {{rotX(0.0f), rotY(0.0f)}, {1.0f, 0.0f, 0.0f}},
-            {{rotX(0.523598f), rotY(0.523598f)}, {1.0f, 0.0f, 0.0f}},
-            {{rotX(1.047197f), rotY(1.047197f)}, {1.0f, 0.0f, 0.0f}},
-            {{rotX(1.570796f), rotY(1.570796f)}, {1.0f, 0.0f, 0.0f}},
-            {{rotX(2.094395f), rotY(2.094395f)}, {1.0f, 0.0f, 0.0f}},
-            {{rotX(2.617993f), rotY(2.617993f)}, {1.0f, 0.0f, 0.0f}},
-            {{rotX(3.141592f), rotY(3.141592f)}, {1.0f, 0.0f, 0.0f}},
-            {{rotX(3.665191f), rotY(3.665191f)}, {1.0f, 0.0f, 0.0f}},
-            {{rotX(4.188790f), rotY(4.188790f)}, {1.0f, 0.0f, 0.0f}},
-            {{rotX(4.712388f), rotY(4.712388f)}, {1.0f, 0.0f, 0.0f}},
-            {{rotX(5.235987f), rotY(5.235987f)}, {1.0f, 0.0f, 0.0f}},
-            {{rotX(5.759586f), rotY(5.759586f)}, {1.0f, 0.0f, 0.0f}},
-        };
-        const std::vector<uint16_t> indices =
-        {
-            0, 1, 2, 0, 2, 3, 0, 3, 4, 0, 4, 5, 0, 5, 6, 0, 6, 7, 0, 7, 8, 0, 8, 9, 0, 9, 10, 0, 10, 11, 0, 11, 12, 0, 12, 1
-        };
-
-        void createVertexBuffer()
-        {
-            VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
-
-            VkBuffer stagingBuffer;
-            VkDeviceMemory stagingBufferMemory;
-            createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
-
-            void* data;
-            vkMapMemory(deviceManager.device, stagingBufferMemory, 0, bufferSize, 0, &data);
-            memcpy(data, vertices.data(), (size_t) bufferSize);
-            vkUnmapMemory(deviceManager.device, stagingBufferMemory);
-
-            createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer, vertexBufferMemory);
-            copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
-
-            vkDestroyBuffer(deviceManager.device, stagingBuffer, nullptr);
-            vkFreeMemory(deviceManager.device, stagingBufferMemory, nullptr);
-        }
-        void createIndexBuffer()
-        {
-            VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
-
-            VkBuffer stagingBuffer;
-            VkDeviceMemory stagingBufferMemory;
-            createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
-
-            void* data;
-            vkMapMemory(deviceManager.device, stagingBufferMemory, 0, bufferSize, 0, &data);
-            memcpy(data, indices.data(), (size_t) bufferSize);
-            vkUnmapMemory(deviceManager.device, stagingBufferMemory);
-
-            createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer, indexBufferMemory);
-
-            copyBuffer(stagingBuffer, indexBuffer, bufferSize);
-
-            vkDestroyBuffer(deviceManager.device, stagingBuffer, nullptr);
-            vkFreeMemory(deviceManager.device, stagingBufferMemory, nullptr);
-        }
-        void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory)
-        {
-            VkBufferCreateInfo bufferInfo{};
-            bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-            bufferInfo.size = size;
-            bufferInfo.usage = usage;
-            bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-            if (vkCreateBuffer(deviceManager.device, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) throw std::runtime_error("failed to create vertex buffer!");
-
-            VkMemoryRequirements memRequirements;
-            vkGetBufferMemoryRequirements(deviceManager.device, buffer, &memRequirements);
-
-            VkMemoryAllocateInfo allocInfo{};
-            allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-            allocInfo.allocationSize = memRequirements.size;
-            allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
-
-            if (vkAllocateMemory(deviceManager.device, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) throw std::runtime_error("failed to allocate vertex buffer memory!");
-            vkBindBufferMemory(deviceManager.device, buffer, bufferMemory, 0);
-        }
-        uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
-        {
-            VkPhysicalDeviceMemoryProperties memProperties;
-            vkGetPhysicalDeviceMemoryProperties(deviceManager.physicalDevice, &memProperties);
-
-            for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++)
-            {
-                if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties)
-                {
-                    return i;
-                }
-            }
-            throw std::runtime_error("failed to find suitable memory type!");
-        }
-        void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
-        {
-            VkCommandPoolCreateInfo poolInfo{};
-            poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-            poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-            poolInfo.queueFamilyIndex = deviceManager.indices.graphicsFamily.value();
-
-            VkCommandPool commandPool;
-            if (vkCreateCommandPool(deviceManager.device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) throw std::runtime_error("failed to create command pool!");
-
-            VkCommandBufferAllocateInfo allocInfo{};
-            allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-            allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-            allocInfo.commandPool = commandPool;
-            allocInfo.commandBufferCount = 1;
-
-            VkCommandBuffer commandBuffer;
-            vkAllocateCommandBuffers(deviceManager.device, &allocInfo, &commandBuffer);
-
-            VkCommandBufferBeginInfo beginInfo{};
-            beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-            beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-            vkBeginCommandBuffer(commandBuffer, &beginInfo);
-
-            VkBufferCopy copyRegion{};
-            copyRegion.srcOffset = 0;
-            copyRegion.dstOffset = 0;
-            copyRegion.size = size;
-            vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
-
-            vkEndCommandBuffer(commandBuffer);
-
-            VkSubmitInfo submitInfo{};
-            submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-            submitInfo.commandBufferCount = 1;
-            submitInfo.pCommandBuffers = &commandBuffer;
-
-            vkQueueSubmit(deviceManager.graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
-            vkQueueWaitIdle(deviceManager.graphicsQueue);
-
-            vkFreeCommandBuffers(deviceManager.device, commandPool, 1, &commandBuffer);
-            vkDestroyCommandPool(deviceManager.device, commandPool, nullptr);
+            commandManager.createCommandBuffers(deviceManager.device, frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.renderPass, bufferManager.vertexBuffer, bufferManager.indexBuffer, bufferManager.indices.size(), bufferManager.descriptorSets);
         }
 
         std::atomic<bool> running = true;
@@ -400,6 +251,7 @@ class Triangle
 
                     vkResetFences(deviceManager.device, 1, &fence);
 
+                    bufferManager.updateUniformBuffer(currentFrame);
                     submitQueue(fence, imgAvailable);
                     presentImg();
 
@@ -423,9 +275,9 @@ class Triangle
             {
                 recreateSwapChain();
             }
-            else if (result != VK_SUCCESS)
+            else
             {
-                throw std::runtime_error("failed to present swap chain image!");
+                vk_check(result, "failed to present swap chain image!");
             }
         }
 
@@ -433,14 +285,23 @@ class Triangle
         {
             vkDeviceWaitIdle(deviceManager.device);
             frameManager.cleanupSwapChain(deviceManager.device);
+
+            for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+            {
+                vkDestroyBuffer(deviceManager.device, bufferManager.uniformBuffers[i], nullptr);
+                vkFreeMemory(deviceManager.device, bufferManager.uniformBuffersMemory[i], nullptr);
+            }
+
             frameManager.cleanupPipeline(deviceManager.device);
             syncManager.cleanupSyncObjects(deviceManager.device);
 
-            vkDestroyBuffer(deviceManager.device, indexBuffer, nullptr);
-            vkFreeMemory(deviceManager.device, indexBufferMemory, nullptr);
+            vkDestroyDescriptorPool(deviceManager.device, bufferManager.descriptorPool, nullptr);
+            vkDestroyDescriptorSetLayout(deviceManager.device, bufferManager.descriptorSetLayout, nullptr);
 
-            vkDestroyBuffer(deviceManager.device, vertexBuffer, nullptr);
-            vkFreeMemory(deviceManager.device, vertexBufferMemory, nullptr);
+            vkDestroyBuffer(deviceManager.device, bufferManager.indexBuffer, nullptr);
+            vkFreeMemory(deviceManager.device, bufferManager.indexBufferMemory, nullptr);
+            vkDestroyBuffer(deviceManager.device, bufferManager.vertexBuffer, nullptr);
+            vkFreeMemory(deviceManager.device, bufferManager.vertexBufferMemory, nullptr);
 
             vkDestroyCommandPool(deviceManager.device, commandManager.commandPool, nullptr);
             vkDestroyDevice(deviceManager.device, nullptr);

@@ -2,7 +2,9 @@
 #include <volk.h>
 #include <optional>
 #include <vector>
+#include <stdexcept>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <array>
 
 const int MAX_FRAMES_IN_FLIGHT = 3;
@@ -18,6 +20,14 @@ const std::vector<const char*> validationLayers = {"VK_LAYER_KHRONOS_validation"
 
 const bool forceOpenGL = false;
 
+inline void vk_check(VkResult result, const std::string& msg)
+{
+    if (result != VK_SUCCESS)
+    {
+        throw std::runtime_error(msg);
+    }
+}
+
 struct QueueFamilyIndices
 {
     std::optional<uint32_t> graphicsFamily;
@@ -28,14 +38,12 @@ struct QueueFamilyIndices
         return graphicsFamily.has_value() && presentFamily.has_value();
     }
 };
-
 struct SwapChainSupportDetails
 {
     VkSurfaceCapabilitiesKHR capabilities;
     std::vector<VkSurfaceFormatKHR> formats;
     std::vector<VkPresentModeKHR> presentModes;
 };
-
 struct Vertex
 {
     glm::vec2 pos;

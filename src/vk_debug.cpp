@@ -1,15 +1,14 @@
 #include "vk_debug.hpp"
-#include <stdexcept>
+#include <cstring>
 #include <iostream>
-
-#include "common_structs.hpp"
+#include "common.hpp"
 
 void DebugManager::setupDebugMessenger(VkInstance &instance)
 {
     VkDebugUtilsMessengerCreateInfoEXT createInfo;
     populateDebugMessengerCreateInfo(createInfo);
 
-    if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS) throw std::runtime_error("failed to set up debug messenger!");
+    vk_check(CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger), "failed to set up debug messenger!");
 }
 void DebugManager::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo)
 {

@@ -1,10 +1,6 @@
 #pragma once
 #include "SDL3/SDL_video.h"
-#include <volk.h>
-#include <string>
-#include <vector>
-
-#include "common_structs.hpp"
+#include "common.hpp"
 
 class FrameManager
 {
@@ -14,14 +10,15 @@ class FrameManager
         VkSwapchainKHR swapChain;
         std::vector<VkFramebuffer> swapChainFramebuffers;
         VkPipeline graphicsPipeline;
+        VkPipelineLayout pipelineLayout;
         VkRenderPass renderPass;
 
-        void init(VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, SwapChainSupportDetails &swapChainSupport);
+        void init(VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, SwapChainSupportDetails &swapChainSupport, VkDescriptorSetLayout descriptorSetLayout);
         void reinit(VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, SwapChainSupportDetails &swapChainSupport);
         void createSwapChain(VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, SwapChainSupportDetails &swapChainSupport);
         void createImageViews(VkDevice &device);
         void createRenderPass(VkDevice &device);
-        void createGraphicsPipeline(VkDevice &device);
+        void createGraphicsPipeline(VkDevice &device, VkDescriptorSetLayout descriptorSetLayout);
         void createFramebuffers(VkDevice &device);
         void cleanupSwapChain(VkDevice &device);
         void cleanupPipeline(VkDevice &device);
@@ -29,7 +26,6 @@ class FrameManager
     private:
         VkFormat swapChainImageFormat;
         std::vector<VkImageView> swapChainImageViews;
-        VkPipelineLayout pipelineLayout;
 
         VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
         VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
