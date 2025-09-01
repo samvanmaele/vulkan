@@ -2,7 +2,18 @@
 #include "common.hpp"
 #include <cstring>
 #include <chrono>
+#include <iostream>
 
+void BufferManager::init(VkPhysicalDevice physicalDevice, VkDevice device, QueueFamilyIndices queueIndices, VkQueue graphicsQueue)
+{
+    Model("models/vedal987/vedal987.gltf");
+    createDescriptorSetLayout(device);
+    createVertexBuffer(physicalDevice, device, queueIndices, graphicsQueue);
+    createIndexBuffer(physicalDevice, device, queueIndices, graphicsQueue);
+    createUniformBuffers(physicalDevice, device);
+    createDescriptorPool(device);
+    createDescriptorSets(device);
+}
 void BufferManager::createDescriptorSetLayout(VkDevice device)
 {
     VkDescriptorSetLayoutBinding uboLayoutBinding{};
@@ -211,11 +222,99 @@ void BufferManager::updateUniformBuffer(uint32_t currentFrame)
 
     memcpy(uniformBuffersMapped[currentFrame], &ubo, sizeof(ubo));
 }
-float BufferManager::rotX(float x)
+void BufferManager::Model(const char* filename)
 {
-    return 0.75f * (std::cos(x) - std::sin(x));
+    tinygltf::Model model;
+    tinygltf::TinyGLTF loader;
+    std::string err, warn;
+
+    bool res = loader.LoadASCIIFromFile(&model, &err, &warn, filename);
+    if (!warn.empty()) {std::cout << "Warning: " << warn << std::endl;}
+    if (!err.empty()) {std::cerr << "Error: " << err << std::endl;}
+    if (!res) {std::cerr << "Failed to load glTF: " << filename << std::endl;}
+
+    const tinygltf::Scene& scene = model.scenes[model.defaultScene];
+
+    for (int nodeIndex : scene.nodes)
+    {
+        const tinygltf::Node& node = model.nodes[nodeIndex];
+        bindNode(model, node);
+    }
 }
-float BufferManager::rotY(float y)
+void BufferManager::bindNode(tinygltf::Model& model, const tinygltf::Node& node)
 {
-    return 0.75f * (std::cos(y) + std::sin(y));
+    if (node.mesh >= 0) {bindMesh(model, model.meshes[node.mesh]);}
+    for (int child : node.children)
+    {
+        if (child >= 0) {bindNode(model, model.nodes[child]);}
+    }
+}
+void BufferManager::bindMesh(tinygltf::Model& model, tinygltf::Mesh& mesh)
+{
+    for (const auto& primitive : mesh.primitives)
+    {
+        for (const auto& attrib : primitive.attributes)
+        {
+            if (attrib.first == "POSITION")
+            {
+                const auto& vertexAccessor = model.accessors[attrib.second];
+                const auto& vertexBufferView = model.bufferViews[vertexAccessor.bufferView];
+                const auto& vertexBuffer = model.buffers[vertexBufferView.buffer];
+
+                const unsigned char* dataPtrVertex = vertexBuffer.data.data() + vertexBufferView.byteOffset + vertexAccessor.byteOffset;
+                size_t vertexCount = vertexAccessor.count;
+                if (vertices.size() == 0) vertices.resize(vertexCount);
+                size_t stride = vertexAccessor.ByteStride(vertexBufferView);
+                if (stride == 0) stride = sizeof(float) * 3;
+
+                for (size_t i = 0; i < vertexCount; i++)
+                {
+                    const float* pos = reinterpret_cast<const float*>(dataPtrVertex + i * stride);
+                    vertices[i].pos = glm::vec3(pos[0], pos[1], pos[2]);
+                    vertices[i].color = glm::vec3(1.0f, 0.0f, 0.0f);
+                }
+            }
+            else if (attrib.first == "NORMAL")
+            {
+                const auto& normalAccessor = model.accessors[attrib.second];
+                const auto& normalBufferView = model.bufferViews[normalAccessor.bufferView];
+                const auto& normalBuffer = model.buffers[normalBufferView.buffer];
+
+                const unsigned char* dataPtrNormal = normalBuffer.data.data() + normalBufferView.byteOffset + normalAccessor.byteOffset;
+                size_t normalCount = normalAccessor.count;
+                if (vertices.size() == 0) vertices.resize(normalCount);
+                size_t stride = normalAccessor.ByteStride(normalBufferView);
+                if (stride == 0) stride = sizeof(float) * 3;
+
+                for (size_t i = 0; i < normalCount; i++)
+                {
+                    const float* norm = reinterpret_cast<const float*>(dataPtrNormal + i * stride);
+                    vertices[i].normal = glm::vec3(norm[0], norm[1], norm[2]);
+                }
+            }
+        }
+        const auto& indexAccessor = model.accessors[primitive.indices];
+        const auto& indexBufferView = model.bufferViews[indexAccessor.bufferView];
+        const auto& indexBuffer = model.buffers[indexBufferView.buffer];
+
+        const unsigned char* dataPtrIndex = indexBuffer.data.data() + indexBufferView.byteOffset + indexAccessor.byteOffset;
+        size_t indexCount = indexAccessor.count;
+        indices.resize(indexCount);
+
+        int stride = 0;
+        switch (indexAccessor.componentType)
+        {
+            case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:  stride = 1; break;
+            case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT: stride = 2; break;
+            case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT:   stride = 4; break;
+            default: throw std::runtime_error("Unsupported index type");
+        }
+
+        for (size_t i = 0; i < indexCount; i++)
+        {
+            uint32_t value = 0;
+            memcpy(&value, dataPtrIndex + i * stride, stride);
+            indices[i] = value;
+        }
+    }
 }

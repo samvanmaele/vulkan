@@ -1,4 +1,8 @@
-#include <SDL3/SDL_stdinc.h>
+#define GLM_FORCE_RADIANS
+#define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
+#define TINYGLTF_IMPLEMENTATION
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
 
 #ifdef _WIN32
     #define WIN32_LEAN_AND_MEAN
@@ -89,16 +93,10 @@ class Triangle
             if (!deviceManager.checkPhysicalDevice() || forceOpenGL) return false;
 
             deviceManager.createLogicalDevice(deviceManager.indices);
-            bufferManager.createDescriptorSetLayout(deviceManager.device);
+            bufferManager.init(deviceManager.physicalDevice, deviceManager.device, deviceManager.indices, deviceManager.graphicsQueue);
 
             SwapChainSupportDetails swapChainSupport = deviceManager.querySwapChainSupport(deviceManager.physicalDevice);
             frameManager.init(deviceManager.device, window, deviceManager.surface, deviceManager.indices, swapChainSupport, bufferManager.descriptorSetLayout);
-
-            bufferManager.createVertexBuffer(deviceManager.physicalDevice, deviceManager.device, deviceManager.indices, deviceManager.graphicsQueue);
-            bufferManager.createIndexBuffer(deviceManager.physicalDevice, deviceManager.device, deviceManager.indices, deviceManager.graphicsQueue);
-            bufferManager.createUniformBuffers(deviceManager.physicalDevice, deviceManager.device);
-            bufferManager.createDescriptorPool(deviceManager.device);
-            bufferManager.createDescriptorSets(deviceManager.device);
 
             commandManager.init(deviceManager.device, deviceManager.indices, frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.renderPass, bufferManager.vertexBuffer, bufferManager.indexBuffer, bufferManager.indices.size(), bufferManager.descriptorSets);
             syncManager.createSyncObjects(deviceManager.device);
