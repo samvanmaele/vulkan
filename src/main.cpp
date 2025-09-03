@@ -284,6 +284,11 @@ class Triangle
             vkDeviceWaitIdle(deviceManager.device);
             frameManager.cleanupSwapChain(deviceManager.device);
 
+            vkDestroySampler(deviceManager.device, bufferManager.textureSampler, nullptr);
+            vkDestroyImageView(deviceManager.device, bufferManager.textureImageView, nullptr);
+            vkDestroyImage(deviceManager.device, bufferManager.textureImage, nullptr);
+            vkFreeMemory(deviceManager.device, bufferManager.textureImageMemory, nullptr);
+
             for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
             {
                 vkDestroyBuffer(deviceManager.device, bufferManager.uniformBuffers[i], nullptr);

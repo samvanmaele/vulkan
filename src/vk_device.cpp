@@ -90,13 +90,13 @@ int DeviceManager::rateDeviceSuitability(VkPhysicalDevice physicalDevice)
         swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
     }
 
-    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
-    if (!indices.isComplete() || !extensionsSupported || !swapChainAdequate) return 0;
-
     VkPhysicalDeviceProperties deviceProperties;
     vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
     VkPhysicalDeviceFeatures deviceFeatures;
     vkGetPhysicalDeviceFeatures(physicalDevice, &deviceFeatures);
+
+    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+    if (!(indices.isComplete() && extensionsSupported && swapChainAdequate && deviceFeatures.samplerAnisotropy)) return 0;
 
     if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) score += 1000;
     score += deviceProperties.limits.maxImageDimension2D;
@@ -181,6 +181,8 @@ void DeviceManager::createLogicalDevice(QueueFamilyIndices &indices)
     }
 
     VkPhysicalDeviceFeatures deviceFeatures{};
+    deviceFeatures.samplerAnisotropy = VK_TRUE;
+
     VkPhysicalDeviceVulkan13Features deviceFeatures13{};
     deviceFeatures13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
     deviceFeatures13.synchronization2 = VK_TRUE;

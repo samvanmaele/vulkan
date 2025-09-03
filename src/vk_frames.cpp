@@ -1,6 +1,8 @@
 #include "vk_frames.hpp"
+#include "common.hpp"
 #include <algorithm>
 #include <fstream>
+#include <iostream>
 #include <vulkan/vulkan_core.h>
 
 void FrameManager::init(VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, SwapChainSupportDetails &swapChainSupport, VkDescriptorSetLayout descriptorSetLayout)
@@ -314,15 +316,15 @@ VkPresentModeKHR FrameManager::chooseSwapPresentMode(const std::vector<VkPresent
 }
 VkExtent2D FrameManager::chooseSwapExtent(SDL_Window* window, const VkSurfaceCapabilitiesKHR& capabilities)
 {
+    SDL_GetWindowSize(window, &WIDTH, &HEIGHT);
+
     if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
     {
         return capabilities.currentExtent;
     }
     else
     {
-        int width, height;
-        SDL_GetWindowSize(window, &width, &height);
-        VkExtent2D actualExtent = {static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
+        VkExtent2D actualExtent = {static_cast<uint32_t>(WIDTH), static_cast<uint32_t>(HEIGHT)};
 
         actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
         actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);

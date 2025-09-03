@@ -19,7 +19,7 @@ ifeq ($(OS),Windows_NT)
 	CXXFLAGS_VOLK = $(CXXFLAGS_COMMON_VOLK) $(VULKAN_LOCATION) $(SDL3_LOCATION)
 	CXXFLAGS_DEBUG = $(CXXFLAGS_COMMON_DEBUG) $(VULKAN_LOCATION) $(SDL3_LOCATION)
 
-	LDFLAGS = -fuse-ld=lld -LC:\VulkanSDK\1.4.321.1\Lib -LC:\SDL3-3.2.20\lib\x64 -lvulkan-1 -lSDL3 -lkernel32 -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 -lversion -luuid -ladvapi32 -lsetupapi -lshell32 -ldinput8
+	LDFLAGS = -fuse-ld=lld -LC:\VulkanSDK\1.4.321.1\Lib -LC:\SDL3-3.2.20\lib\x64 -lvulkan-1 -lSDL3 -lSDL3_image -lkernel32 -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 -lversion -luuid -ladvapi32 -lsetupapi -lshell32 -ldinput8
 else
     # linux
     TARGET = $(OUTPUT)/vulkan
@@ -29,10 +29,10 @@ else
 	CXXFLAGS_VOLK = $(CXXFLAGS_COMMON_VOLK)
 	CXXFLAGS_DEBUG = $(CXXFLAGS_COMMON_DEBUG)
 
-    LDFLAGS  = -fuse-ld=lld -static-libstdc++ -static-libgcc -lvulkan -ldl -lpthread -lm -lSDL3
+    LDFLAGS  = -fuse-ld=lld -static-libstdc++ -static-libgcc -lvulkan -ldl -lpthread -lm -lSDL3 -lSDL3_image
 endif
 
-OBJS_COMMON = main.o vk_device.o vk_frames.o vk_buffers.o vk_command.o vk_sync.o volk.o
+OBJS_COMMON = main.o vk_device.o vk_frames.o vk_buffers.o vk_command.o vk_sync.o volk.o common.o
 OBJS_DEBUG  = vk_debug.o
 
 .PHONY: all debug clean run run-debug
