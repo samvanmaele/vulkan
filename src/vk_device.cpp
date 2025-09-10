@@ -2,13 +2,14 @@
 #include <SDL3/SDL_vulkan.h>
 #include <iostream>
 #include <map>
+#include <ostream>
 #include <set>
 
 void DeviceManager::createInstance(SDL_Window* window, VkDebugUtilsMessengerCreateInfoEXT &debugCreateInfo)
 {
     VkApplicationInfo appInfo{};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    appInfo.pApplicationName = "Hello Triangle";
+    appInfo.pApplicationName = "Game";
     appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
     appInfo.pEngineName = "No Engine";
     appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
@@ -36,18 +37,54 @@ void DeviceManager::createInstance(SDL_Window* window, VkDebugUtilsMessengerCrea
 
     vk_check(vkCreateInstance(&createInfo, nullptr, &instance), "failed to create instance!");
     SDL_Vulkan_CreateSurface(window, instance, nullptr, &surface);
+    volkLoadInstance(instance);
+}
+bool DeviceManager::init()
+{
+    if (!checkPhysicalDevice())
+    {
+        return false;
+    }
+
+    createLogicalDevice(indices);
+    return true;
+}
+void DeviceManager::reinit()
+{
+    swapChainSupport = querySwapChainSupport(physicalDevice);
+}
+SwapChainSupportDetails DeviceManager::querySwapChainSupport(VkPhysicalDevice physicalDevice)
+{
+    SwapChainSupportDetails swapChainSupport;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &swapChainSupport.capabilities);
+
+    uint32_t formatCount;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, nullptr);
+    if (formatCount != 0)
+    {
+        swapChainSupport.formats.resize(formatCount);
+        vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, swapChainSupport.formats.data());
+    }
+    uint32_t presentModeCount;
+    vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, nullptr);
+    if (presentModeCount != 0)
+    {
+        swapChainSupport.presentModes.resize(presentModeCount);
+        vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, swapChainSupport.presentModes.data());
+    }
+
+    return swapChainSupport;
 }
 std::vector<const char*> DeviceManager::getRequiredExtensions(SDL_Window* window)
 {
-    uint32_t sdlExtensionCount = 0;
-    const char* const* sdlExtensions = SDL_Vulkan_GetInstanceExtensions(&sdlExtensionCount);
-    std::vector<const char*> extensions;
-    for (uint32_t i = 0; i < sdlExtensionCount; ++i)
-    {
-        extensions.push_back(sdlExtensions[i]);
-    }
+    uint32_t count = 0;
+    const char* const* sdlExtensions = SDL_Vulkan_GetInstanceExtensions(&count);
+    std::vector<const char*> extensions(sdlExtensions, sdlExtensions + count);
 
-    if (enableValidationLayers) extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    if (enableValidationLayers)
+    {
+        extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    }
 
     return extensions;
 }
@@ -55,50 +92,69 @@ bool DeviceManager::checkPhysicalDevice()
 {
     uint32_t deviceCount = 0;
     vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
-    if (deviceCount == 0) return false;
+    if (deviceCount == 0)
+    {
+        return false;
+    }
 
     std::vector<VkPhysicalDevice> devices(deviceCount);
     vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
     std::multimap<int, VkPhysicalDevice> candidates;
-
-    for (const auto& device : devices)
+    for (const VkPhysicalDevice &physicalDevice : devices)
     {
-        int score = rateDeviceSuitability(device);
-        candidates.insert(std::make_pair(score, device));
+        int score = rateDeviceSuitability(physicalDevice);
+        candidates.insert(std::make_pair(score, physicalDevice));
+    }
+    if (candidates.rbegin()->first == 0)
+    {
+        return false;
     }
 
-    if (candidates.rbegin()->first > 0) physicalDevice = candidates.rbegin()->second;
-    else throw std::runtime_error("failed to find a suitable GPU!");
-
-    VkPhysicalDeviceProperties props;
-    vkGetPhysicalDeviceProperties(physicalDevice, &props);
-    std::cout << "Selected GPU: " << props.deviceName << std::endl;
-
+    physicalDevice = candidates.rbegin()->second;
+    swapChainSupport = querySwapChainSupport(physicalDevice);
     indices = findQueueFamilies(physicalDevice);
+
+    VkPhysicalDeviceProperties properties;
+    vkGetPhysicalDeviceProperties(physicalDevice, &properties);
+    std::cout << "Selected GPU: " << properties.deviceName << std::endl;
+
     return true;
 }
 int DeviceManager::rateDeviceSuitability(VkPhysicalDevice physicalDevice)
 {
-    int score = 0;
-
-    bool extensionsSupported = checkDeviceExtensionSupport(physicalDevice);
-    bool swapChainAdequate = false;
-    if (extensionsSupported)
+    if (!checkDeviceExtensionSupport(physicalDevice))
     {
-        SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
-        swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
+        return 0;
+    }
+
+    SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
+    if (swapChainSupport.formats.empty() || swapChainSupport.presentModes.empty())
+    {
+        return 0;
+    }
+
+    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+    if (!(indices.isComplete()))
+    {
+        return 0;
+    }
+
+    VkPhysicalDeviceFeatures deviceFeatures;
+    vkGetPhysicalDeviceFeatures(physicalDevice, &deviceFeatures);
+    if (!deviceFeatures.samplerAnisotropy)
+    {
+        return 0;
     }
 
     VkPhysicalDeviceProperties deviceProperties;
     vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
-    VkPhysicalDeviceFeatures deviceFeatures;
-    vkGetPhysicalDeviceFeatures(physicalDevice, &deviceFeatures);
 
-    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
-    if (!(indices.isComplete() && extensionsSupported && swapChainAdequate && deviceFeatures.samplerAnisotropy)) return 0;
-
-    if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) score += 1000;
+    int score = 0;
+    if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+    {
+        score += 1000;
+    }
     score += deviceProperties.limits.maxImageDimension2D;
 
     return score;
@@ -119,45 +175,23 @@ bool DeviceManager::checkDeviceExtensionSupport(VkPhysicalDevice physicalDevice)
 
     return requiredExtensions.empty();
 }
-SwapChainSupportDetails DeviceManager::querySwapChainSupport(VkPhysicalDevice physicalDevice)
-{
-    SwapChainSupportDetails details;
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &details.capabilities);
-
-    uint32_t formatCount;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, nullptr);
-    if (formatCount != 0)
-    {
-        details.formats.resize(formatCount);
-        vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, details.formats.data());
-    }
-    uint32_t presentModeCount;
-    vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, nullptr);
-    if (presentModeCount != 0)
-    {
-        details.presentModes.resize(presentModeCount);
-        vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, details.presentModes.data());
-    }
-
-    return details;
-}
 QueueFamilyIndices DeviceManager::findQueueFamilies(VkPhysicalDevice physicalDevice)
 {
-    QueueFamilyIndices indices;
-
     uint32_t queueFamilyCount = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
     std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
     vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilies.data());
 
     int i = 0;
+    QueueFamilyIndices indices;
+
     for (const auto& queueFamily : queueFamilies)
     {
-        VkBool32 presentSupport = false;
+        VkBool32 presentSupport;
         vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &presentSupport);
         if (presentSupport) indices.presentFamily = i;
-
         if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) indices.graphicsFamily = i;
+
         if (indices.isComplete()) break;
         i++;
     }
@@ -193,7 +227,6 @@ void DeviceManager::createLogicalDevice(QueueFamilyIndices &indices)
     createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
     createInfo.pQueueCreateInfos = queueCreateInfos.data();
     createInfo.pEnabledFeatures = &deviceFeatures;
-
     createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
     createInfo.ppEnabledExtensionNames = deviceExtensions.data();
 

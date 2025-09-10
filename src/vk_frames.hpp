@@ -13,10 +13,23 @@ class FrameManager
         VkPipelineLayout pipelineLayout;
         VkRenderPass renderPass;
 
-        void init(VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, SwapChainSupportDetails &swapChainSupport, VkDescriptorSetLayout descriptorSetLayout);
-        void reinit(VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, SwapChainSupportDetails &swapChainSupport);
+        VkImage depthImage;
+        VkDeviceMemory depthImageMemory;
+        VkImageView depthImageView;
+        VkFormat depthFormat;
+
+        void init(VkPhysicalDevice physicalDevice, VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, VkQueue graphicsQueue, SwapChainSupportDetails &swapChainSupport, VkDescriptorSetLayout descriptorSetLayout);
+        void reinit(VkPhysicalDevice physicalDevice, VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, VkQueue graphicsQueue, SwapChainSupportDetails &swapChainSupport);
         void createSwapChain(VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, SwapChainSupportDetails &swapChainSupport);
         void createImageViews(VkDevice &device);
+        void createImage(VkPhysicalDevice physicalDevice, VkDevice device, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory);
+        uint32_t findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
+        VkImageView createImageView(VkDevice &device, VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
+        void transitionImageLayout(VkDevice device, uint32_t graphicsFamilyIndex, VkQueue graphicsQueue, VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
+        VkCommandBuffer beginSingleTimeCommands(VkDevice &device, VkCommandPool commandPool);
+        void endSingleTimeCommands(VkDevice &device, VkCommandBuffer &commandBuffer, VkQueue &graphicsQueue, VkCommandPool commandPool);
+        void createDepthResources(VkPhysicalDevice physicalDevice, VkDevice &device, uint32_t graphicsFamilyIndex, VkQueue graphicsQueue);
+        VkFormat findSupportedFormat(VkPhysicalDevice physicalDevice, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
         void createRenderPass(VkDevice &device);
         void createGraphicsPipeline(VkDevice &device, VkDescriptorSetLayout descriptorSetLayout);
         void createFramebuffers(VkDevice &device);

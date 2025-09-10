@@ -1,5 +1,6 @@
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
+#define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -39,20 +40,19 @@ class Triangle
             initWindow();
 
             #ifdef __EMSCRIPTEN__
-                initWebGL();
-                mainLoop();
-                cleanAllWebGPU();
+                pass
             #else
-                if (!initVulkan())
+                if (!forceOpenGL && initVulkan())
+                {
+                    createRenderthread();
+                    mainLoop();
+                    cleanAll();
+                }
+                else
                 {
                     printf("Failed to create vulkan instance\n");
                     cleanInstance();
                     //init openGL
-                }
-                else
-                {
-                    mainLoop();
-                    cleanAll();
                 }
             #endif
         }
@@ -71,34 +71,28 @@ class Triangle
         {
             SDL_Init(SDL_INIT_VIDEO);
 
+            uint64_t flags = SDL_WINDOW_RESIZABLE;
             #ifdef __EMSCRIPTEN__
-                window = SDL_CreateWindow("...", WIDTH, HEIGHT, SDL_WINDOW_RESIZABLE);
+                pass
             #else
-                window = SDL_CreateWindow("...", WIDTH, HEIGHT, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+                flags |= SDL_WINDOW_VULKAN;
             #endif
+
+            window = SDL_CreateWindow("...", WIDTH, HEIGHT, flags);
         }
         bool initVulkan()
         {
             volkInitialize();
 
-            VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
-            if (enableValidationLayers && !debugManager.checkValidationLayerSupport()) throw std::runtime_error("validation layers requested, but not available!");
-            if (enableValidationLayers) debugManager.populateDebugMessengerCreateInfo(debugCreateInfo);
-
-            deviceManager.createInstance(window, debugCreateInfo);
-
-            volkLoadInstance(deviceManager.instance);
-
+            if (enableValidationLayers) debugManager.init();
+            deviceManager.createInstance(window, debugManager.debugCreateInfo);
             if (enableValidationLayers) debugManager.setupDebugMessenger(deviceManager.instance);
-            if (!deviceManager.checkPhysicalDevice() || forceOpenGL) return false;
 
-            deviceManager.createLogicalDevice(deviceManager.indices);
+            if (!deviceManager.init()) return false;
             bufferManager.init(deviceManager.physicalDevice, deviceManager.device, deviceManager.indices, deviceManager.graphicsQueue);
+            frameManager.init(deviceManager.physicalDevice, deviceManager.device, window, deviceManager.surface, deviceManager.indices, deviceManager.graphicsQueue, deviceManager.swapChainSupport, bufferManager.descriptorSetLayout);
 
-            SwapChainSupportDetails swapChainSupport = deviceManager.querySwapChainSupport(deviceManager.physicalDevice);
-            frameManager.init(deviceManager.device, window, deviceManager.surface, deviceManager.indices, swapChainSupport, bufferManager.descriptorSetLayout);
-
-            commandManager.init(deviceManager.device, deviceManager.indices, frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.renderPass, bufferManager.vertexBuffer, bufferManager.indexBuffer, bufferManager.indices.size(), bufferManager.descriptorSets);
+            commandManager.init(deviceManager.device, deviceManager.indices.graphicsFamily.value(), frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.renderPass, bufferManager.testmodel.primitiveDataList[0].vertexBuffer, bufferManager.testmodel.primitiveDataList[0].indexBuffer, bufferManager.testmodel.primitiveDataList[0].indices.size(), bufferManager.descriptorSets);
             syncManager.createSyncObjects(deviceManager.device);
 
             return true;
@@ -107,11 +101,11 @@ class Triangle
         {
             vkDeviceWaitIdle(deviceManager.device);
 
-            SwapChainSupportDetails swapChainSupport = deviceManager.querySwapChainSupport(deviceManager.physicalDevice);
-            frameManager.reinit(deviceManager.device, window, deviceManager.surface, deviceManager.indices, swapChainSupport);
+            deviceManager.reinit();
+            frameManager.reinit(deviceManager.physicalDevice, deviceManager.device, window, deviceManager.surface, deviceManager.indices, deviceManager.graphicsQueue, deviceManager.swapChainSupport);
 
             vkFreeCommandBuffers(deviceManager.device, commandManager.commandPool, static_cast<uint32_t>(commandManager.commandBuffers.size()), commandManager.commandBuffers.data());
-            commandManager.createCommandBuffers(deviceManager.device, frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.renderPass, bufferManager.vertexBuffer, bufferManager.indexBuffer, bufferManager.indices.size(), bufferManager.descriptorSets);
+            commandManager.createCommandBuffers(deviceManager.device, frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.renderPass, bufferManager.testmodel.primitiveDataList[0].vertexBuffer, bufferManager.testmodel.primitiveDataList[0].indexBuffer, bufferManager.testmodel.primitiveDataList[0].indices.size(), bufferManager.descriptorSets);
         }
 
         std::atomic<bool> running = true;
@@ -142,7 +136,6 @@ class Triangle
         }
         void mainLoop()
         {
-            createRenderthread();
             setThreadAffinityAndPriority();
 
             uint32_t lastTime = SDL_GetTicks();
@@ -185,18 +178,20 @@ class Triangle
             renderThread.join();
         }
 
+        VkFence fence;
+        VkSemaphore imgAvailable;
         uint32_t imageIndex;
         uint32_t currentFrame = 0;
         VkSemaphore imgRendered = VK_NULL_HANDLE;
 
-        VkCommandBufferSubmitInfo cmdBufInfo
-        {
-            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO
-        };
         VkSemaphoreSubmitInfo waitInfo
         {
             .sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO,
             .stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT
+        };
+        VkCommandBufferSubmitInfo cmdBufInfo
+        {
+            .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO
         };
         VkSemaphoreSubmitInfo signalInfo
         {
@@ -231,26 +226,15 @@ class Triangle
 
                 while (running)
                 {
-                    const VkFence fence = syncManager.inFlightFences[currentFrame];
-                    const VkSemaphore imgAvailable = syncManager.imageAvailableSemaphores[currentFrame];
+                    fence = syncManager.inFlightFences[currentFrame];
+                    imgAvailable = syncManager.imageAvailableSemaphores[currentFrame];
+
                     vkWaitForFences(deviceManager.device, 1, &fence, VK_TRUE, UINT64_MAX);
-
-                    VkResult result = vkAcquireNextImageKHR(deviceManager.device, frameManager.swapChain, UINT64_MAX, imgAvailable, VK_NULL_HANDLE, &imageIndex);
-
-                    if (result == VK_ERROR_OUT_OF_DATE_KHR)
-                    {
-                        recreateSwapChain();
-                        continue;
-                    }
-                    else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
-                    {
-                        throw std::runtime_error("failed to acquire swap chain image!");
-                    }
-
+                    if (!acquireImage()) continue;;
                     vkResetFences(deviceManager.device, 1, &fence);
 
                     bufferManager.updateUniformBuffer(currentFrame);
-                    submitQueue(fence, imgAvailable);
+                    submitQueue();
                     presentImg();
 
                     currentFrame = ++currentFrame % MAX_FRAMES_IN_FLIGHT;
@@ -258,7 +242,22 @@ class Triangle
                 }
             });
         }
-        void submitQueue(const VkFence fence, const VkSemaphore imgAvailable)
+        bool acquireImage()
+        {
+            VkResult result = vkAcquireNextImageKHR(deviceManager.device, frameManager.swapChain, UINT64_MAX, imgAvailable, VK_NULL_HANDLE, &imageIndex);
+
+            if (result == VK_ERROR_OUT_OF_DATE_KHR)
+            {
+                recreateSwapChain();
+                return false;
+            }
+            else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+            {
+                throw std::runtime_error("failed to acquire swap chain image!");
+            }
+            return true;
+        }
+        void submitQueue()
         {
             imgRendered = syncManager.renderFinishedSemaphores[imageIndex];
             cmdBufInfo.commandBuffer = commandManager.commandBuffers[imageIndex];
@@ -282,29 +281,11 @@ class Triangle
         void cleanAll()
         {
             vkDeviceWaitIdle(deviceManager.device);
-            frameManager.cleanupSwapChain(deviceManager.device);
 
-            vkDestroySampler(deviceManager.device, bufferManager.textureSampler, nullptr);
-            vkDestroyImageView(deviceManager.device, bufferManager.textureImageView, nullptr);
-            vkDestroyImage(deviceManager.device, bufferManager.textureImage, nullptr);
-            vkFreeMemory(deviceManager.device, bufferManager.textureImageMemory, nullptr);
-
-            for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-            {
-                vkDestroyBuffer(deviceManager.device, bufferManager.uniformBuffers[i], nullptr);
-                vkFreeMemory(deviceManager.device, bufferManager.uniformBuffersMemory[i], nullptr);
-            }
-
-            frameManager.cleanupPipeline(deviceManager.device);
             syncManager.cleanupSyncObjects(deviceManager.device);
-
-            vkDestroyDescriptorPool(deviceManager.device, bufferManager.descriptorPool, nullptr);
-            vkDestroyDescriptorSetLayout(deviceManager.device, bufferManager.descriptorSetLayout, nullptr);
-
-            vkDestroyBuffer(deviceManager.device, bufferManager.indexBuffer, nullptr);
-            vkFreeMemory(deviceManager.device, bufferManager.indexBufferMemory, nullptr);
-            vkDestroyBuffer(deviceManager.device, bufferManager.vertexBuffer, nullptr);
-            vkFreeMemory(deviceManager.device, bufferManager.vertexBufferMemory, nullptr);
+            frameManager.cleanupSwapChain(deviceManager.device);
+            frameManager.cleanupPipeline(deviceManager.device);
+            bufferManager.destroyAll(deviceManager.device);
 
             vkDestroyCommandPool(deviceManager.device, commandManager.commandPool, nullptr);
             vkDestroyDevice(deviceManager.device, nullptr);
@@ -314,9 +295,7 @@ class Triangle
         void cleanInstance()
         {
             vkDestroySurfaceKHR(deviceManager.instance, deviceManager.surface, nullptr);
-
-            if (enableValidationLayers) debugManager.DestroyDebugUtilsMessengerEXT(deviceManager.instance, nullptr);
-
+            if (enableValidationLayers) debugManager.destroyDebugUtilsMessengerEXT(deviceManager.instance, nullptr);
             vkDestroyInstance(deviceManager.instance, nullptr);
 
             SDL_DestroyWindow(window);

@@ -1,8 +1,8 @@
 #pragma once
+#include <string>
 #include <volk.h>
 #include <optional>
 #include <vector>
-#include <stdexcept>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <array>
@@ -20,13 +20,7 @@ const std::vector<const char*> validationLayers = {"VK_LAYER_KHRONOS_validation"
 
 const bool forceOpenGL = false;
 
-inline void vk_check(VkResult result, const std::string& msg)
-{
-    if (result != VK_SUCCESS)
-    {
-        throw std::runtime_error(msg);
-    }
-}
+void vk_check(VkResult result, const std::string& msg);
 
 struct QueueFamilyIndices
 {

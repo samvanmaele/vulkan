@@ -4,18 +4,21 @@
 #include <cstdint>
 #include <cstring>
 #include <chrono>
-#include <iostream>
-#include <vulkan/vulkan_core.h>
+#include <stdexcept>
 
 void BufferManager::init(VkPhysicalDevice physicalDevice, VkDevice device, QueueFamilyIndices queueIndices, VkQueue graphicsQueue)
 {
-    Model("models/vedal987/vedal987.gltf");
+    VkCommandPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+    poolInfo.queueFamilyIndex = queueIndices.graphicsFamily.value();
+    vk_check(vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool), "failed to create command pool!");
+
+    testmodel = Model(physicalDevice, device, graphicsQueue, commandPool, "models/vedal987/vedal987.gltf");
     createDescriptorSetLayout(device);
-    createTextureImage(physicalDevice, device, queueIndices, graphicsQueue, "models/vedal987/vedal987.png");
+    createTextureImage(physicalDevice, device, graphicsQueue, "models/vedal987/vedal987.png");
     createTextureImageView(device);
     createTextureSampler(physicalDevice, device);
-    createVertexBuffer(physicalDevice, device, queueIndices, graphicsQueue);
-    createIndexBuffer(physicalDevice, device, queueIndices, graphicsQueue);
     createUniformBuffers(physicalDevice, device);
     createDescriptorPool(device);
     createDescriptorSets(device);
@@ -44,8 +47,11 @@ void BufferManager::createDescriptorSetLayout(VkDevice device)
 
     vk_check(vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayout), "failed to create descriptor set layout!");
 }
-void BufferManager::createTextureImage(VkPhysicalDevice physicalDevice, VkDevice device, QueueFamilyIndices queueIndices, VkQueue graphicsQueue, const char* filepath)
+void BufferManager::createTextureImage(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, const char* filepath)
 {
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+
     SDL_Surface *image = IMG_Load(filepath);
     const SDL_PixelFormatDetails *details = SDL_GetPixelFormatDetails(image->format);
     int channels = details->bytes_per_pixel;
@@ -59,9 +65,9 @@ void BufferManager::createTextureImage(VkPhysicalDevice physicalDevice, VkDevice
     vkUnmapMemory(device, stagingBufferMemory);
 
     createImage(physicalDevice, device, image->w, image->h, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureImage, textureImageMemory);
-    transitionImageLayout(device, queueIndices, graphicsQueue, textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    copyBufferToImage(device, queueIndices, graphicsQueue, stagingBuffer, textureImage, static_cast<uint32_t>(image->w), static_cast<uint32_t>(image->h));
-    transitionImageLayout(device, queueIndices, graphicsQueue, textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    transitionImageLayout(device, graphicsQueue, textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    copyBufferToImage(device, graphicsQueue, stagingBuffer, textureImage, static_cast<uint32_t>(image->w), static_cast<uint32_t>(image->h));
+    transitionImageLayout(device, graphicsQueue, textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
     SDL_DestroySurface(image);
     vkDestroyBuffer(device, stagingBuffer, nullptr);
@@ -92,66 +98,15 @@ void BufferManager::createImage(VkPhysicalDevice physicalDevice, VkDevice device
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(physicalDevice, memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    allocInfo.memoryTypeIndex = findMemoryType(physicalDevice, memRequirements.memoryTypeBits, properties);
 
     vk_check(vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory), "failed to allocate image memory!");
 
     vkBindImageMemory(device, image, imageMemory, 0);
 }
-void BufferManager::copyBufferToImage(VkDevice device, QueueFamilyIndices queueIndices, VkQueue graphicsQueue, VkBuffer buffer, VkImage image, uint32_t width, uint32_t height)
+void BufferManager::transitionImageLayout(VkDevice device, VkQueue graphicsQueue, VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
 {
-    VkCommandPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    poolInfo.queueFamilyIndex = queueIndices.graphicsFamily.value();
-
-    VkCommandPool commandPool;
-    vk_check(vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool), "failed to create command pool!");
-
-    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device, commandPool);
-
-    VkBufferImageCopy region{};
-    region.bufferOffset = 0;
-    region.bufferRowLength = 0;
-    region.bufferImageHeight = 0;
-
-    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    region.imageSubresource.mipLevel = 0;
-    region.imageSubresource.baseArrayLayer = 0;
-    region.imageSubresource.layerCount = 1;
-
-    region.imageOffset = {0, 0, 0};
-    region.imageExtent =
-    {
-        width,
-        height,
-        1
-    };
-
-    vkCmdCopyBufferToImage
-    (
-        commandBuffer,
-        buffer,
-        image,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        1,
-        &region
-    );
-
-    endSingleTimeCommands(device, commandBuffer, graphicsQueue, commandPool);
-    vkDestroyCommandPool(device, commandPool, nullptr);
-}
-void BufferManager::transitionImageLayout(VkDevice device, QueueFamilyIndices queueIndices, VkQueue graphicsQueue, VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
-{
-    VkCommandPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    poolInfo.queueFamilyIndex = queueIndices.graphicsFamily.value();
-
-    VkCommandPool commandPool;
-    vk_check(vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool), "failed to create command pool!");
-
-    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device, commandPool);
+    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device);
 
     VkPipelineStageFlags sourceStage;
     VkPipelineStageFlags destinationStage;
@@ -163,11 +118,23 @@ void BufferManager::transitionImageLayout(VkDevice device, QueueFamilyIndices qu
     barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
     barrier.image = image;
-    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     barrier.subresourceRange.baseMipLevel = 0;
     barrier.subresourceRange.levelCount = 1;
     barrier.subresourceRange.baseArrayLayer = 0;
     barrier.subresourceRange.layerCount = 1;
+
+    if (newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+    {
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+        if (format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT)
+        {
+            barrier.subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+        }
+    }
+    else
+    {
+        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    }
 
     if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
     {
@@ -185,23 +152,40 @@ void BufferManager::transitionImageLayout(VkDevice device, QueueFamilyIndices qu
         sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
         destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
     }
+    else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
+    {
+        barrier.srcAccessMask = 0;
+        barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+        sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        destinationStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    }
     else
     {
         throw std::invalid_argument("unsupported layout transition!");
     }
 
-    vkCmdPipelineBarrier
-    (
-        commandBuffer,
-        sourceStage, destinationStage,
-        0,
-        0, nullptr,
-        0, nullptr,
-        1, &barrier
-    );
+    vkCmdPipelineBarrier(commandBuffer, sourceStage, destinationStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+    endSingleTimeCommands(device, commandBuffer, graphicsQueue);
+}
+void BufferManager::copyBufferToImage(VkDevice device, VkQueue graphicsQueue, VkBuffer buffer, VkImage image, uint32_t width, uint32_t height)
+{
+    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device);
 
-    endSingleTimeCommands(device, commandBuffer, graphicsQueue, commandPool);
-    vkDestroyCommandPool(device, commandPool, nullptr);
+    VkBufferImageCopy region{};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+    region.imageOffset = {0, 0, 0};
+    region.imageExtent = {width, height, 1};
+
+    vkCmdCopyBufferToImage(commandBuffer, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+    endSingleTimeCommands(device, commandBuffer, graphicsQueue);
 }
 void BufferManager::createTextureImageView(VkDevice device)
 {
@@ -243,45 +227,6 @@ void BufferManager::createTextureSampler(VkPhysicalDevice physicalDevice, VkDevi
 
     vk_check(vkCreateSampler(device, &samplerInfo, nullptr, &textureSampler), "failed to create texture sampler!");
 }
-void BufferManager::createVertexBuffer(VkPhysicalDevice physicalDevice, VkDevice device, QueueFamilyIndices queueIndices, VkQueue graphicsQueue)
-{
-    VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
-
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-    createBuffer(physicalDevice, device, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
-
-    void* data;
-    vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
-    memcpy(data, vertices.data(), (size_t) bufferSize);
-    vkUnmapMemory(device, stagingBufferMemory);
-
-    createBuffer(physicalDevice, device, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer, vertexBufferMemory);
-    copyBuffer(device, queueIndices, graphicsQueue, stagingBuffer, vertexBuffer, bufferSize);
-
-    vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingBufferMemory, nullptr);
-}
-void BufferManager::createIndexBuffer(VkPhysicalDevice physicalDevice, VkDevice device, QueueFamilyIndices queueIndices, VkQueue graphicsQueue)
-{
-    VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
-
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-    createBuffer(physicalDevice, device, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
-
-    void* data;
-    vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
-    memcpy(data, indices.data(), (size_t) bufferSize);
-    vkUnmapMemory(device, stagingBufferMemory);
-
-    createBuffer(physicalDevice, device, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer, indexBufferMemory);
-
-    copyBuffer(device, queueIndices, graphicsQueue, stagingBuffer, indexBuffer, bufferSize);
-
-    vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingBufferMemory, nullptr);
-}
 void BufferManager::createUniformBuffers(VkPhysicalDevice physicalDevice, VkDevice device)
 {
     VkDeviceSize bufferSize = sizeof(UniformBufferObject);
@@ -304,7 +249,7 @@ void BufferManager::createBuffer(VkPhysicalDevice physicalDevice, VkDevice devic
     bufferInfo.usage = usage;
     bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-    vk_check(vkCreateBuffer(device, &bufferInfo, nullptr, &buffer), "failed to create vertex buffer!");
+    vk_check(vkCreateBuffer(device, &bufferInfo, nullptr, &buffer), "failed to create buffer!");
 
     VkMemoryRequirements memRequirements;
     vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
@@ -314,7 +259,7 @@ void BufferManager::createBuffer(VkPhysicalDevice physicalDevice, VkDevice devic
     allocInfo.allocationSize = memRequirements.size;
     allocInfo.memoryTypeIndex = findMemoryType(physicalDevice, memRequirements.memoryTypeBits, properties);
 
-    vk_check(vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory), "failed to allocate vertex buffer memory!");
+    vk_check(vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory), "failed to allocate buffer memory!");
     vkBindBufferMemory(device, buffer, bufferMemory, 0);
 }
 uint32_t BufferManager::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties)
@@ -331,17 +276,9 @@ uint32_t BufferManager::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t
     }
     throw std::runtime_error("failed to find suitable memory type!");
 }
-void BufferManager::copyBuffer(VkDevice device, QueueFamilyIndices queueIndices, VkQueue graphicsQueue, VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
+void BufferManager::copyBuffer(VkDevice device, VkQueue graphicsQueue, VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
 {
-    VkCommandPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    poolInfo.queueFamilyIndex = queueIndices.graphicsFamily.value();
-
-    VkCommandPool commandPool;
-    vk_check(vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool), "failed to create command pool!");
-
-    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device, commandPool);
+    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device);
 
     VkBufferCopy copyRegion{};
     copyRegion.srcOffset = 0;
@@ -349,10 +286,9 @@ void BufferManager::copyBuffer(VkDevice device, QueueFamilyIndices queueIndices,
     copyRegion.size = size;
     vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
 
-    endSingleTimeCommands(device, commandBuffer, graphicsQueue, commandPool);
-    vkDestroyCommandPool(device, commandPool, nullptr);
+    endSingleTimeCommands(device, commandBuffer, graphicsQueue);
 }
-VkCommandBuffer BufferManager::beginSingleTimeCommands(VkDevice &device, VkCommandPool &commandPool)
+VkCommandBuffer BufferManager::beginSingleTimeCommands(VkDevice &device)
 {
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -371,7 +307,7 @@ VkCommandBuffer BufferManager::beginSingleTimeCommands(VkDevice &device, VkComma
 
     return commandBuffer;
 }
-void BufferManager::endSingleTimeCommands(VkDevice &device, VkCommandBuffer &commandBuffer, VkQueue &graphicsQueue, VkCommandPool &commandPool)
+void BufferManager::endSingleTimeCommands(VkDevice &device, VkCommandBuffer &commandBuffer, VkQueue &graphicsQueue)
 {
     vkEndCommandBuffer(commandBuffer);
 
@@ -461,116 +397,28 @@ void BufferManager::updateUniformBuffer(uint32_t currentFrame)
     memcpy(uniformBuffersMapped[currentFrame], &ubo, sizeof(ubo));
 }
 
-void BufferManager::Model(const char* filename)
+void BufferManager::destroyAll(VkDevice device)
 {
-    tinygltf::Model model;
-    tinygltf::TinyGLTF loader;
-    std::string err, warn;
+    destroyTexture(device);
+    destroyUniformBuffers(device);
 
-    bool res = loader.LoadASCIIFromFile(&model, &err, &warn, filename);
-    if (!warn.empty()) {std::cout << "Warning: " << warn << std::endl;}
-    if (!err.empty()) {std::cerr << "Error: " << err << std::endl;}
-    if (!res) {std::cerr << "Failed to load glTF: " << filename << std::endl;}
-
-    const tinygltf::Scene& scene = model.scenes[model.defaultScene];
-
-    for (int nodeIndex : scene.nodes)
-    {
-        const tinygltf::Node& node = model.nodes[nodeIndex];
-        bindNode(model, node);
-    }
+    vkDestroyCommandPool(device, commandPool, nullptr);
 }
-void BufferManager::bindNode(tinygltf::Model& model, const tinygltf::Node& node)
+void BufferManager::destroyTexture(VkDevice device)
 {
-    if (node.mesh >= 0) {bindMesh(model, model.meshes[node.mesh]);}
-    for (int child : node.children)
-    {
-        if (child >= 0) {bindNode(model, model.nodes[child]);}
-    }
+    vkDestroySampler(device, textureSampler, nullptr);
+    vkDestroyImageView(device, textureImageView, nullptr);
+    vkDestroyImage(device, textureImage, nullptr);
+    vkFreeMemory(device, textureImageMemory, nullptr);
 }
-void BufferManager::bindMesh(tinygltf::Model& model, tinygltf::Mesh& mesh)
+void BufferManager::destroyUniformBuffers(VkDevice device)
 {
-    for (const auto& primitive : mesh.primitives)
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
     {
-        for (const auto& attrib : primitive.attributes)
-        {
-            if (attrib.first == "POSITION")
-            {
-                const auto& accessor = model.accessors[attrib.second];
-                const auto& bufferView = model.bufferViews[accessor.bufferView];
-                const auto& buffer = model.buffers[bufferView.buffer];
-
-                const unsigned char* dataPtrVertex = buffer.data.data() + bufferView.byteOffset + accessor.byteOffset;
-                size_t count = accessor.count;
-                if (vertices.size() == 0) vertices.resize(count);
-                size_t stride = accessor.ByteStride(bufferView);
-                if (stride == 0) stride = sizeof(float) * 3;
-
-                for (size_t i = 0; i < count; i++)
-                {
-                    const float* pos = reinterpret_cast<const float*>(dataPtrVertex + i * stride);
-                    vertices[i].pos = glm::vec3(pos[0], pos[1], pos[2]);
-                }
-            }
-            else if (attrib.first == "TEXCOORD_0")
-            {
-                const auto& accessor = model.accessors[attrib.second];
-                const auto& bufferView = model.bufferViews[accessor.bufferView];
-                const auto& buffer = model.buffers[bufferView.buffer];
-
-                const unsigned char* dataPtrNormal = buffer.data.data() + bufferView.byteOffset + accessor.byteOffset;
-                size_t count = accessor.count;
-                if (vertices.size() == 0) vertices.resize(count);
-                size_t stride = accessor.ByteStride(bufferView);
-                if (stride == 0) stride = sizeof(float) * 3;
-
-                for (size_t i = 0; i < count; i++)
-                {
-                    const float* norm = reinterpret_cast<const float*>(dataPtrNormal + i * stride);
-                    vertices[i].texCoord = glm::vec3(norm[0], norm[1], norm[2]);
-                }
-            }
-            else if (attrib.first == "NORMAL")
-            {
-                const auto& accessor = model.accessors[attrib.second];
-                const auto& bufferView = model.bufferViews[accessor.bufferView];
-                const auto& buffer = model.buffers[bufferView.buffer];
-
-                const unsigned char* dataPtrNormal = buffer.data.data() + bufferView.byteOffset + accessor.byteOffset;
-                size_t count = accessor.count;
-                if (vertices.size() == 0) vertices.resize(count);
-                size_t stride = accessor.ByteStride(bufferView);
-                if (stride == 0) stride = sizeof(float) * 3;
-
-                for (size_t i = 0; i < count; i++)
-                {
-                    const float* norm = reinterpret_cast<const float*>(dataPtrNormal + i * stride);
-                    vertices[i].normal = glm::vec3(norm[0], norm[1], norm[2]);
-                }
-            }
-        }
-        const auto& indexAccessor = model.accessors[primitive.indices];
-        const auto& indexBufferView = model.bufferViews[indexAccessor.bufferView];
-        const auto& indexBuffer = model.buffers[indexBufferView.buffer];
-
-        const unsigned char* dataPtrIndex = indexBuffer.data.data() + indexBufferView.byteOffset + indexAccessor.byteOffset;
-        size_t indexCount = indexAccessor.count;
-        indices.resize(indexCount);
-
-        int stride = 0;
-        switch (indexAccessor.componentType)
-        {
-            case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:  stride = 1; break;
-            case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT: stride = 2; break;
-            case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT:   stride = 4; break;
-            default: throw std::runtime_error("Unsupported index type");
-        }
-
-        for (size_t i = 0; i < indexCount; i++)
-        {
-            uint32_t value = 0;
-            memcpy(&value, dataPtrIndex + i * stride, stride);
-            indices[i] = value;
-        }
+        vkDestroyBuffer(device, uniformBuffers[i], nullptr);
+        vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
     }
+
+    vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+    vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
 }

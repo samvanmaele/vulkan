@@ -1,17 +1,18 @@
 #include "vk_command.hpp"
+#include "common.hpp"
 #include <vulkan/vulkan_core.h>
 
-void CommandManager::init(VkDevice &device, QueueFamilyIndices &indices, size_t swapChainSize, std::vector<VkFramebuffer> &swapChainFramebuffers, VkExtent2D &swapChainExtent, VkPipeline &graphicsPipeline, VkPipelineLayout pipelineLayout, VkRenderPass &renderPass, VkBuffer vertexBuffer, VkBuffer indexBuffer, size_t indicesSize, std::vector<VkDescriptorSet> descriptorSets)
+void CommandManager::init(VkDevice &device, uint32_t graphicsFamilyIndex, size_t swapChainSize, std::vector<VkFramebuffer> &swapChainFramebuffers, VkExtent2D &swapChainExtent, VkPipeline &graphicsPipeline, VkPipelineLayout pipelineLayout, VkRenderPass &renderPass, VkBuffer vertexBuffer, VkBuffer indexBuffer, size_t indicesSize, std::vector<VkDescriptorSet> descriptorSets)
 {
-    createCommandPool(device, indices);
+    createCommandPool(device, graphicsFamilyIndex);
     createCommandBuffers(device, swapChainSize, swapChainFramebuffers, swapChainExtent, graphicsPipeline, pipelineLayout, renderPass, vertexBuffer, indexBuffer, indicesSize, descriptorSets);
 }
-void CommandManager::createCommandPool(VkDevice &device, QueueFamilyIndices &indices)
+void CommandManager::createCommandPool(VkDevice &device, uint32_t graphicsFamilyIndex)
 {
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
     poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    poolInfo.queueFamilyIndex = indices.graphicsFamily.value();
+    poolInfo.queueFamilyIndex = graphicsFamilyIndex;
 
     vk_check(vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool), "failed to create command pool!");
 }
@@ -41,7 +42,9 @@ void CommandManager::recordCommandBuffer(VkCommandBuffer &commandBuffer, VkFrame
 
     vk_check(vkBeginCommandBuffer(commandBuffer, &beginInfo), "failed to begin recording command buffer!");
 
-    VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+    std::array<VkClearValue, 2> clearValues{};
+    clearValues[0].color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+    clearValues[1].depthStencil = {1.0f, 0};
 
     VkRenderPassBeginInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -49,8 +52,8 @@ void CommandManager::recordCommandBuffer(VkCommandBuffer &commandBuffer, VkFrame
     renderPassInfo.framebuffer = swapChainFramebuffer;
     renderPassInfo.renderArea.offset = {0, 0};
     renderPassInfo.renderArea.extent = swapChainExtent;
-    renderPassInfo.clearValueCount = 1;
-    renderPassInfo.pClearValues = &clearColor;
+    renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
+    renderPassInfo.pClearValues = clearValues.data();
 
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
