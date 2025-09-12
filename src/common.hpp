@@ -1,4 +1,6 @@
 #pragma once
+#include <glm/ext/vector_float2.hpp>
+#include <glm/ext/vector_float3.hpp>
 #include <string>
 #include <volk.h>
 #include <optional>
@@ -6,6 +8,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <array>
+#include <vulkan/vulkan_core.h>
 
 const int MAX_FRAMES_IN_FLIGHT = 3;
 extern int WIDTH;
@@ -38,39 +41,76 @@ struct SwapChainSupportDetails
     std::vector<VkSurfaceFormatKHR> formats;
     std::vector<VkPresentModeKHR> presentModes;
 };
-struct Vertex
+static std::array<VkVertexInputBindingDescription, 3> getBindingDescription()
 {
-    glm::vec3 pos;
-    glm::vec2 texCoord;
-    glm::vec3 normal;
+    std::array<VkVertexInputBindingDescription, 3> bindings{};
 
-    static VkVertexInputBindingDescription getBindingDescription()
+    bindings[0].binding = 0;
+    bindings[0].stride = sizeof(glm::vec3);
+    bindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+    bindings[1].binding = 1;
+    bindings[1].stride = sizeof(glm::vec3);
+    bindings[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+    bindings[2].binding = 2;
+    bindings[2].stride = sizeof(glm::vec2);
+    bindings[2].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+    return bindings;
+}
+static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions()
+{
+    std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions{};
+
+    attributeDescriptions[0].binding = 0;
+    attributeDescriptions[0].location = 0;
+    attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attributeDescriptions[0].offset = 0;
+
+    attributeDescriptions[1].binding = 1;
+    attributeDescriptions[1].location = 1;
+    attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attributeDescriptions[1].offset = 0;
+
+    attributeDescriptions[2].binding = 2;
+    attributeDescriptions[2].location = 2;
+    attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
+    attributeDescriptions[2].offset = 0;
+
+    return attributeDescriptions;
+}
+struct PrimitiveData
+{
+    size_t vertexCount, indexCount;
+    VkIndexType indexType;
+
+    VkBuffer posBuffer;
+    VkDeviceMemory positionBufferMemory;
+    VkBuffer normalBuffer;
+    VkDeviceMemory normalBufferMemory;
+    VkBuffer texBuffer;
+    VkDeviceMemory texBufferMemory;
+    VkBuffer indexBuffer;
+    VkDeviceMemory indexBufferMemory;
+
+    //VkImage textureImage;
+    //VkDeviceMemory textureImageMemory;
+    //VkImageView textureImageView;
+    //VkSampler textureSampler;
+
+    //void destroyTexture(VkDevice device)
+    //{
+    //    vkDestroySampler(device, textureSampler, nullptr);
+    //    vkDestroyImageView(device, textureImageView, nullptr);
+    //    vkDestroyImage(device, textureImage, nullptr);
+    //    vkFreeMemory(device, textureImageMemory, nullptr);
+    //}
+    void destroyVertexBuffers(VkDevice device)
     {
-        VkVertexInputBindingDescription bindingDescription{};
-        bindingDescription.binding = 0;
-        bindingDescription.stride = sizeof(Vertex);
-        bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-        return bindingDescription;
-    }
-    static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions()
-    {
-        std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions{};
-
-        attributeDescriptions[0].binding = 0;
-        attributeDescriptions[0].location = 0;
-        attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-        attributeDescriptions[0].offset = offsetof(Vertex, pos);
-
-        attributeDescriptions[1].binding = 0;
-        attributeDescriptions[1].location = 1;
-        attributeDescriptions[1].format = VK_FORMAT_R32G32_SFLOAT;
-        attributeDescriptions[1].offset = offsetof(Vertex, texCoord);
-
-        attributeDescriptions[2].binding = 0;
-        attributeDescriptions[2].location = 2;
-        attributeDescriptions[2].format = VK_FORMAT_R32G32B32_SFLOAT;
-        attributeDescriptions[2].offset = offsetof(Vertex, normal);
-
-        return attributeDescriptions;
+        vkDestroyBuffer(device, indexBuffer, nullptr);
+        vkFreeMemory(device, indexBufferMemory, nullptr);
+        vkDestroyBuffer(device, posBuffer, nullptr);
+        vkFreeMemory(device, positionBufferMemory, nullptr);
     }
 };

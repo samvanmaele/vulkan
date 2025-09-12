@@ -6,6 +6,7 @@
 #include <cstring>
 #include <glm/ext/vector_float3.hpp>
 #include <iostream>
+#include <numeric>
 #include <stdexcept>
 #include <utility>
 #include <vulkan/vulkan_core.h>
@@ -42,8 +43,7 @@ void Model::bindMesh(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue g
     for (const auto& primitive : mesh.primitives)
     {
         PrimitiveData primitiveData;
-        size_t vertexCount = 0;
-        size_t indexCount = 0;
+        size_t vertexCount, indexCount = 0;
 
         AttribDatta posAttrib, normAttrib, texAttrib;
         for (const auto& attrib : primitive.attributes)
@@ -52,40 +52,34 @@ void Model::bindMesh(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue g
             else if (attrib.first == "NORMAL") normAttrib = getAttrib(model, vertexCount, attrib.second, false);
             else if (attrib.first == "TEXCOORD_0") texAttrib = getAttrib(model, vertexCount, attrib.second, false);
         }
-        primitiveData.vertices.resize(vertexCount);
+        primitiveData.vertexCount = vertexCount;
 
-        for (size_t i = 0; i < vertexCount; i++)
+        stageBuffer(physicalDevice, device, graphicsQueue, commandPool, posAttrib.dataPtr, vertexCount * posAttrib.stride, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, primitiveData.posBuffer, primitiveData.positionBufferMemory);
+
+        if (normAttrib.dataPtr)
         {
-            const float* pos = reinterpret_cast<const float*>(posAttrib.dataPtr + i * posAttrib.stride);
-            const float* norm = reinterpret_cast<const float*>(normAttrib.dataPtr + i * normAttrib.stride);
-            const float* tex = reinterpret_cast<const float*>(texAttrib.dataPtr + i * texAttrib.stride);
-            primitiveData.vertices[i].pos = glm::vec3(pos[0], pos[1], pos[2]);
-            primitiveData.vertices[i].normal = glm::vec3(norm[0], norm[1], norm[2]);
-            primitiveData.vertices[i].texCoord = glm::vec2(tex[0], tex[1]);
+            stageBuffer(physicalDevice, device, graphicsQueue, commandPool, normAttrib.dataPtr, vertexCount * normAttrib.stride, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, primitiveData.normalBuffer, primitiveData.normalBufferMemory);
         }
-
+        if (texAttrib.dataPtr)
+        {
+            stageBuffer(physicalDevice, device, graphicsQueue, commandPool, texAttrib.dataPtr, vertexCount * texAttrib.stride, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, primitiveData.texBuffer, primitiveData.texBufferMemory);
+        }
         if (primitive.indices >= 0)
         {
             AttribDatta indexAttrib = getAttrib(model, indexCount, primitive.indices, true);
-            primitiveData.indices.resize(indexCount);
-            for (size_t i = 0; i < indexCount; ++i)
-            {
-                uint32_t value = 0;
-                memcpy(&value, indexAttrib.dataPtr + i * indexAttrib.stride, indexAttrib.stride);
-                primitiveData.indices[i] = value;
-            }
+            primitiveData.indexCount = indexCount;
+            primitiveData.indexType = indexAttrib.stride == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
+
+            stageBuffer(physicalDevice, device, graphicsQueue, commandPool, indexAttrib.dataPtr, indexAttrib.stride * indexCount, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, primitiveData.indexBuffer, primitiveData.indexBufferMemory);
         }
         else
         {
-            primitiveData.indices.resize(vertexCount);
-            for (uint32_t i = 0; i < vertexCount; ++i)
-            {
-                primitiveData.indices[i] = i;
-            }
-        }
+            primitiveData.indexCount = vertexCount;
+            std::vector<uint32_t> indices(vertexCount);
+            std::iota(indices.begin(), indices.end(), 0);
 
-        createVertexBuffer(physicalDevice, device, graphicsQueue, commandPool, primitiveData.vertices, primitiveData.vertexBuffer, primitiveData.vertexBufferMemory);
-        createIndexBuffer(physicalDevice, device, graphicsQueue, commandPool, primitiveData.indices, primitiveData.indexBuffer, primitiveData.indexBufferMemory);
+            stageBuffer(physicalDevice, device, graphicsQueue, commandPool, indices.data(), indices.size() * sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, primitiveData.indexBuffer, primitiveData.indexBufferMemory);
+        }
 
         primitiveDataList.push_back(std::move(primitiveData));
     }
@@ -101,47 +95,25 @@ AttribDatta Model::getAttrib(tinygltf::Model& model, size_t &vecSize, int attrib
     AttribDatta attrib
     {
         .dataPtr = buffer.data.data() + bufferView.byteOffset + accessor.byteOffset,
-        .stride = accessor.ByteStride(bufferView),
+        .stride = accessor.ByteStride(bufferView)
     };
 
     return attrib;
 }
 
-void Model::createVertexBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, std::vector<Vertex> vertices, VkBuffer &vertexBuffer, VkDeviceMemory &vertexBufferMemory)
+void Model::stageBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, const void* srcData, size_t dataSize, VkBufferUsageFlags usage, VkBuffer &buffer, VkDeviceMemory &bufferMemory)
 {
-    VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
-
     VkBuffer stagingBuffer;
     VkDeviceMemory stagingBufferMemory;
-    createBuffer(physicalDevice, device, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
+    createBuffer(physicalDevice, device, dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
 
-    void* data;
-    vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
-    memcpy(data, vertices.data(), (size_t) bufferSize);
+    void* dstData;
+    vkMapMemory(device, stagingBufferMemory, 0, dataSize, 0, &dstData);
+    memcpy(dstData, srcData, dataSize);
     vkUnmapMemory(device, stagingBufferMemory);
 
-    createBuffer(physicalDevice, device, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, vertexBuffer, vertexBufferMemory);
-    copyBuffer(device, graphicsQueue, commandPool, stagingBuffer, vertexBuffer, bufferSize);
-
-    vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingBufferMemory, nullptr);
-}
-void Model::createIndexBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, std::vector<uint32_t> indices, VkBuffer &indexBuffer, VkDeviceMemory &indexBufferMemory)
-{
-    VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
-
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-    createBuffer(physicalDevice, device, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
-
-    void* data;
-    vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
-    memcpy(data, indices.data(), (size_t) bufferSize);
-    vkUnmapMemory(device, stagingBufferMemory);
-
-    createBuffer(physicalDevice, device, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer, indexBufferMemory);
-
-    copyBuffer(device, graphicsQueue, commandPool, stagingBuffer, indexBuffer, bufferSize);
+    createBuffer(physicalDevice, device, dataSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, buffer, bufferMemory);
+    copyBuffer(device, graphicsQueue, commandPool, stagingBuffer, buffer, dataSize);
 
     vkDestroyBuffer(device, stagingBuffer, nullptr);
     vkFreeMemory(device, stagingBufferMemory, nullptr);

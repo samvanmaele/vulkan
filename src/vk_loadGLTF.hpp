@@ -3,36 +3,6 @@
 
 #include <tinygltf/tiny_gltf.h>
 
-struct PrimitiveData
-{
-    std::vector<Vertex> vertices;
-    VkBuffer vertexBuffer;
-    VkDeviceMemory vertexBufferMemory;
-
-    std::vector<uint32_t> indices;
-    VkBuffer indexBuffer;
-    VkDeviceMemory indexBufferMemory;
-
-    //VkImage textureImage;
-    //VkDeviceMemory textureImageMemory;
-    //VkImageView textureImageView;
-    //VkSampler textureSampler;
-
-    //void destroyTexture(VkDevice device)
-    //{
-    //    vkDestroySampler(device, textureSampler, nullptr);
-    //    vkDestroyImageView(device, textureImageView, nullptr);
-    //    vkDestroyImage(device, textureImage, nullptr);
-    //    vkFreeMemory(device, textureImageMemory, nullptr);
-    //}
-    void destroyVertexBuffers(VkDevice device)
-    {
-        vkDestroyBuffer(device, indexBuffer, nullptr);
-        vkFreeMemory(device, indexBufferMemory, nullptr);
-        vkDestroyBuffer(device, vertexBuffer, nullptr);
-        vkFreeMemory(device, vertexBufferMemory, nullptr);
-    }
-};
 struct AttribDatta
 {
     const unsigned char* dataPtr;
@@ -46,11 +16,6 @@ class Model
 
         Model() = default;
         Model(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, const char* filename);
-
-        void createVertexBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, std::vector<Vertex> vertices, VkBuffer &vertexBuffer, VkDeviceMemory &vertexBufferMemory);
-        void createIndexBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, std::vector<uint32_t> indices, VkBuffer &indexBuffer, VkDeviceMemory &indexBufferMemory);
-        void createBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
-        uint32_t findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
         /*
         void init(VkPhysicalDevice physicalDevice, VkDevice device, QueueFamilyIndices queueIndices, VkQueue graphicsQueue);
@@ -68,6 +33,9 @@ class Model
         /*
         void copyBufferToImage(VkDevice device, VkQueue graphicsQueue, VkBuffer buffer, VkImage image, uint32_t width, uint32_t height);
         */
+        void stageBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, const void* srcData, size_t dataSize, VkBufferUsageFlags usage, VkBuffer &buffer, VkDeviceMemory &bufferMemory);
+        void createBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
+        uint32_t findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
         void copyBuffer(VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
         VkCommandBuffer beginSingleTimeCommands(VkDevice &device, VkCommandPool commandPool);
         void endSingleTimeCommands(VkDevice &device, VkCommandBuffer &commandBuffer, VkQueue &graphicsQueue, VkCommandPool commandPool);

@@ -402,6 +402,7 @@ void BufferManager::destroyAll(VkDevice device)
     destroyTexture(device);
     destroyUniformBuffers(device);
 
+    testmodel.destroyAll(device);
     vkDestroyCommandPool(device, commandPool, nullptr);
 }
 void BufferManager::destroyTexture(VkDevice device)
