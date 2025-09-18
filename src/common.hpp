@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <string>
@@ -41,45 +42,6 @@ struct SwapChainSupportDetails
     std::vector<VkSurfaceFormatKHR> formats;
     std::vector<VkPresentModeKHR> presentModes;
 };
-static std::array<VkVertexInputBindingDescription, 3> getBindingDescription()
-{
-    std::array<VkVertexInputBindingDescription, 3> bindings{};
-
-    bindings[0].binding = 0;
-    bindings[0].stride = sizeof(glm::vec3);
-    bindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-    bindings[1].binding = 1;
-    bindings[1].stride = sizeof(glm::vec3);
-    bindings[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-    bindings[2].binding = 2;
-    bindings[2].stride = sizeof(glm::vec2);
-    bindings[2].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-    return bindings;
-}
-static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions()
-{
-    std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions{};
-
-    attributeDescriptions[0].binding = 0;
-    attributeDescriptions[0].location = 0;
-    attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attributeDescriptions[0].offset = 0;
-
-    attributeDescriptions[1].binding = 1;
-    attributeDescriptions[1].location = 1;
-    attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attributeDescriptions[1].offset = 0;
-
-    attributeDescriptions[2].binding = 2;
-    attributeDescriptions[2].location = 2;
-    attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-    attributeDescriptions[2].offset = 0;
-
-    return attributeDescriptions;
-}
 struct PrimitiveData
 {
     size_t vertexCount, indexCount;
@@ -94,23 +56,75 @@ struct PrimitiveData
     VkBuffer indexBuffer;
     VkDeviceMemory indexBufferMemory;
 
-    //VkImage textureImage;
-    //VkDeviceMemory textureImageMemory;
-    //VkImageView textureImageView;
-    //VkSampler textureSampler;
+    VkImage textureImage;
+    VkDeviceMemory textureImageMemory;
+    VkImageView textureImageView;
+    uint32_t textureIndex;
 
-    //void destroyTexture(VkDevice device)
-    //{
-    //    vkDestroySampler(device, textureSampler, nullptr);
-    //    vkDestroyImageView(device, textureImageView, nullptr);
-    //    vkDestroyImage(device, textureImage, nullptr);
-    //    vkFreeMemory(device, textureImageMemory, nullptr);
-    //}
+    void destroyTexture(VkDevice device)
+    {
+        vkDestroyImageView(device, textureImageView, nullptr);
+        vkDestroyImage(device, textureImage, nullptr);
+        vkFreeMemory(device, textureImageMemory, nullptr);
+    }
     void destroyVertexBuffers(VkDevice device)
     {
-        vkDestroyBuffer(device, indexBuffer, nullptr);
-        vkFreeMemory(device, indexBufferMemory, nullptr);
         vkDestroyBuffer(device, posBuffer, nullptr);
         vkFreeMemory(device, positionBufferMemory, nullptr);
+        vkDestroyBuffer(device, normalBuffer, nullptr);
+        vkFreeMemory(device, normalBufferMemory, nullptr);
+        vkDestroyBuffer(device, texBuffer, nullptr);
+        vkFreeMemory(device, texBufferMemory, nullptr);
+        vkDestroyBuffer(device, indexBuffer, nullptr);
+        vkFreeMemory(device, indexBufferMemory, nullptr);
     }
+    static std::array<VkVertexInputBindingDescription, 3> getBindingDescription()
+    {
+        std::array<VkVertexInputBindingDescription, 3> bindings{};
+
+        bindings[0].binding = 0;
+        bindings[0].stride = sizeof(glm::vec3);
+        bindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+        bindings[1].binding = 1;
+        bindings[1].stride = sizeof(glm::vec3);
+        bindings[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+        bindings[2].binding = 2;
+        bindings[2].stride = sizeof(glm::vec2);
+        bindings[2].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+        return bindings;
+    }
+    static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions()
+    {
+        std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions{};
+
+        attributeDescriptions[0].binding = 0;
+        attributeDescriptions[0].location = 0;
+        attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attributeDescriptions[0].offset = 0;
+
+        attributeDescriptions[1].binding = 1;
+        attributeDescriptions[1].location = 1;
+        attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+        attributeDescriptions[1].offset = 0;
+
+        attributeDescriptions[2].binding = 2;
+        attributeDescriptions[2].location = 2;
+        attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
+        attributeDescriptions[2].offset = 0;
+
+        return attributeDescriptions;
+    }
+};
+
+struct GlobalUniformBufferObject
+{
+    alignas(16) glm::mat4 view;
+    alignas(16) glm::mat4 proj;
+};
+struct ObjectUniformBufferObject
+{
+    alignas(16) glm::mat4 model;
 };

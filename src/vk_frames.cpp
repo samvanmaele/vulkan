@@ -6,13 +6,13 @@
 #include <iostream>
 #include <vulkan/vulkan_core.h>
 
-void FrameManager::init(VkPhysicalDevice physicalDevice, VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, VkQueue graphicsQueue, SwapChainSupportDetails &swapChainSupport, VkDescriptorSetLayout descriptorSetLayout)
+void FrameManager::init(VkPhysicalDevice physicalDevice, VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, VkQueue graphicsQueue, SwapChainSupportDetails &swapChainSupport, std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts)
 {
     createSwapChain(device, window, surface, indices, swapChainSupport);
     createImageViews(device);
     createDepthResources(physicalDevice, device, indices.graphicsFamily.value(), graphicsQueue);
     createRenderPass(device);
-    createGraphicsPipeline(device, descriptorSetLayout);
+    createGraphicsPipeline(device, descriptorSetLayouts);
     createFramebuffers(device);
 }
 void FrameManager::reinit(VkPhysicalDevice physicalDevice, VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, VkQueue graphicsQueue, SwapChainSupportDetails &swapChainSupport)
@@ -339,7 +339,7 @@ void FrameManager::createRenderPass(VkDevice &device)
 
     vk_check(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass), "failed to create render pass!");
 }
-void FrameManager::createGraphicsPipeline(VkDevice &device, VkDescriptorSetLayout descriptorSetLayout)
+void FrameManager::createGraphicsPipeline(VkDevice &device, std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts)
 {
     auto vertShaderCode = readFile("shaders/triangle.vert.spv");
     auto fragShaderCode = readFile("shaders/triangle.frag.spv");
@@ -359,8 +359,8 @@ void FrameManager::createGraphicsPipeline(VkDevice &device, VkDescriptorSetLayou
     fragShaderStageInfo.pName = "main";
     VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
-    auto bindingDescription = getBindingDescription();
-    auto attributeDescriptions = getAttributeDescriptions();
+    auto bindingDescription = PrimitiveData::getBindingDescription();
+    auto attributeDescriptions = PrimitiveData::getAttributeDescriptions();
 
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -443,8 +443,8 @@ void FrameManager::createGraphicsPipeline(VkDevice &device, VkDescriptorSetLayou
 
     VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
     pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 1;
-    pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+    pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(descriptorSetLayouts.size());
+    pipelineLayoutInfo.pSetLayouts = descriptorSetLayouts.data();
     pipelineLayoutInfo.pushConstantRangeCount = 0;
     pipelineLayoutInfo.pPushConstantRanges = nullptr;
 

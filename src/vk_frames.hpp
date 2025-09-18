@@ -18,7 +18,7 @@ class FrameManager
         VkImageView depthImageView;
         VkFormat depthFormat;
 
-        void init(VkPhysicalDevice physicalDevice, VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, VkQueue graphicsQueue, SwapChainSupportDetails &swapChainSupport, VkDescriptorSetLayout descriptorSetLayout);
+        void init(VkPhysicalDevice physicalDevice, VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, VkQueue graphicsQueue, SwapChainSupportDetails &swapChainSupport, std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts);
         void reinit(VkPhysicalDevice physicalDevice, VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, VkQueue graphicsQueue, SwapChainSupportDetails &swapChainSupport);
         void createSwapChain(VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, SwapChainSupportDetails &swapChainSupport);
         void createImageViews(VkDevice &device);
@@ -31,7 +31,7 @@ class FrameManager
         void createDepthResources(VkPhysicalDevice physicalDevice, VkDevice &device, uint32_t graphicsFamilyIndex, VkQueue graphicsQueue);
         VkFormat findSupportedFormat(VkPhysicalDevice physicalDevice, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
         void createRenderPass(VkDevice &device);
-        void createGraphicsPipeline(VkDevice &device, VkDescriptorSetLayout descriptorSetLayout);
+        void createGraphicsPipeline(VkDevice &device, std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts);
         void createFramebuffers(VkDevice &device);
         void cleanupSwapChain(VkDevice &device);
         void cleanupPipeline(VkDevice &device);

@@ -87,12 +87,36 @@ class Triangle
             if (enableValidationLayers) debugManager.init();
             deviceManager.createInstance(window, debugManager.debugCreateInfo);
             if (enableValidationLayers) debugManager.setupDebugMessenger(deviceManager.instance);
-
             if (!deviceManager.init()) return false;
-            bufferManager.init(deviceManager.physicalDevice, deviceManager.device, deviceManager.indices, deviceManager.graphicsQueue);
-            frameManager.init(deviceManager.physicalDevice, deviceManager.device, window, deviceManager.surface, deviceManager.indices, deviceManager.graphicsQueue, deviceManager.swapChainSupport, bufferManager.descriptorSetLayout);
 
-            commandManager.init(deviceManager.device, deviceManager.indices.graphicsFamily.value(), frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.renderPass, bufferManager.descriptorSets, bufferManager.testmodel.primitiveDataList);
+            std::vector<std::string> modelPaths
+            {
+                "models/vedal987/vedal987.gltf",
+                "models/vedal987/vedal987.gltf",
+                "models/vedal987/vedal987.gltf",
+                "models/vedal987/vedal987.gltf",
+                "models/vedal987/vedal987.gltf",
+                "models/vedal987/vedal987.gltf",
+                "models/vedal987/vedal987.gltf",
+                "models/vedal987/vedal987.gltf",
+                "models/vedal987/vedal987.gltf",
+                "models/vedal987/vedal987.gltf",
+                "models/vedal987/vedal987.gltf",
+                "models/vedal987/vedal987.gltf",
+                "models/vedal987/vedal987.gltf",
+                "models/vedal987/vedal987.gltf",
+                "models/vedal987/vedal987.gltf",
+                "models/vedal987/vedal987.gltf",
+                "models/vedal987/vedal987.gltf",
+                "models/vedal987/vedal987.gltf",
+                "models/vedal987/vedal987.gltf",
+                "models/vedal987/vedal987.gltf",
+            };
+
+            bufferManager.init(deviceManager.physicalDevice, deviceManager.device, deviceManager.indices, deviceManager.graphicsQueue, modelPaths);
+            frameManager.init(deviceManager.physicalDevice, deviceManager.device, window, deviceManager.surface, deviceManager.indices, deviceManager.graphicsQueue, deviceManager.swapChainSupport, bufferManager.descriptorSetLayouts);
+
+            commandManager.init(deviceManager.device, deviceManager.indices.graphicsFamily.value(), frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.renderPass, bufferManager.descriptorSets, bufferManager.models);
             syncManager.createSyncObjects(deviceManager.device);
 
             return true;
@@ -105,7 +129,7 @@ class Triangle
             frameManager.reinit(deviceManager.physicalDevice, deviceManager.device, window, deviceManager.surface, deviceManager.indices, deviceManager.graphicsQueue, deviceManager.swapChainSupport);
 
             vkFreeCommandBuffers(deviceManager.device, commandManager.commandPool, static_cast<uint32_t>(commandManager.commandBuffers.size()), commandManager.commandBuffers.data());
-            commandManager.createCommandBuffers(deviceManager.device, frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.renderPass, bufferManager.descriptorSets, bufferManager.testmodel.primitiveDataList);
+            commandManager.createCommandBuffers(deviceManager.device, frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.renderPass, bufferManager.descriptorSets, bufferManager.models);
         }
 
         std::atomic<bool> running = true;

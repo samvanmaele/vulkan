@@ -29,6 +29,17 @@ Model::Model(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQ
         const tinygltf::Node& node = model.nodes[nodeIndex];
         bindNode(physicalDevice, device, graphicsQueue, commandPool, model, node);
     }
+
+    uniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
+    uniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
+    uniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
+    VkDeviceSize bufferSize = sizeof(ObjectUniformBufferObject);
+
+    for (size_t j = 0; j < MAX_FRAMES_IN_FLIGHT; j++)
+    {
+        createBuffer(physicalDevice, device, bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffers[j], uniformBuffersMemory[j]);
+        vkMapMemory(device, uniformBuffersMemory[j], 0, bufferSize, 0, &uniformBuffersMapped[j]);
+    }
 }
 void Model::bindNode(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, tinygltf::Model& model, const tinygltf::Node& node)
 {
@@ -53,7 +64,6 @@ void Model::bindMesh(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue g
             else if (attrib.first == "TEXCOORD_0") texAttrib = getAttrib(model, vertexCount, attrib.second, false);
         }
         primitiveData.vertexCount = vertexCount;
-
         stageBuffer(physicalDevice, device, graphicsQueue, commandPool, posAttrib.dataPtr, vertexCount * posAttrib.stride, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, primitiveData.posBuffer, primitiveData.positionBufferMemory);
 
         if (normAttrib.dataPtr)
@@ -69,7 +79,6 @@ void Model::bindMesh(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue g
             AttribDatta indexAttrib = getAttrib(model, indexCount, primitive.indices, true);
             primitiveData.indexCount = indexCount;
             primitiveData.indexType = indexAttrib.stride == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
-
             stageBuffer(physicalDevice, device, graphicsQueue, commandPool, indexAttrib.dataPtr, indexAttrib.stride * indexCount, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, primitiveData.indexBuffer, primitiveData.indexBufferMemory);
         }
         else
@@ -77,8 +86,20 @@ void Model::bindMesh(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue g
             primitiveData.indexCount = vertexCount;
             std::vector<uint32_t> indices(vertexCount);
             std::iota(indices.begin(), indices.end(), 0);
-
             stageBuffer(physicalDevice, device, graphicsQueue, commandPool, indices.data(), indices.size() * sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, primitiveData.indexBuffer, primitiveData.indexBufferMemory);
+        }
+
+        if (primitive.material >= 0)
+        {
+            const auto& material = model.materials[primitive.material];
+            if (material.values.find("baseColorTexture") != material.values.end())
+            {
+                int texIndex = material.values.at("baseColorTexture").TextureIndex();
+                primitiveData.textureIndex = texIndex;
+                const tinygltf::Image& image = model.images[texIndex];
+                createTextureImage(physicalDevice, device, graphicsQueue, commandPool, primitiveData.textureImage, primitiveData.textureImageMemory, image.image.data(), image.width, image.height);
+                createTextureImageView(device, primitiveData.textureImageView, primitiveData.textureImage);
+            }
         }
 
         primitiveDataList.push_back(std::move(primitiveData));
@@ -199,39 +220,26 @@ void Model::endSingleTimeCommands(VkDevice &device, VkCommandBuffer &commandBuff
     vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
 }
 
-/*
-void Model::init(VkPhysicalDevice physicalDevice, VkDevice device, QueueFamilyIndices queueIndices, VkQueue graphicsQueue)
-{
-    Model("models/vedal987/vedal987.gltf");
-    createTextureImage(physicalDevice, device, graphicsQueue, "models/vedal987/vedal987.png");
-    createTextureImageView(device);
-    createTextureSampler(physicalDevice, device);
-    createVertexBuffer(physicalDevice, device, graphicsQueue);
-    createIndexBuffer(physicalDevice, device, graphicsQueue);
-}
-void Model::createTextureImage(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkImage textureImage, VkDeviceMemory textureImageMemory, const char* filepath)
+void Model::createTextureImage(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, VkImage &textureImage, VkDeviceMemory &textureImageMemory, const unsigned char* pixels, int texWidth, int texHeight)
 {
     VkBuffer stagingBuffer;
     VkDeviceMemory stagingBufferMemory;
 
-    SDL_Surface *image = IMG_Load(filepath);
-    const SDL_PixelFormatDetails *details = SDL_GetPixelFormatDetails(image->format);
-    int channels = details->bytes_per_pixel;
-    VkDeviceSize imageSize = image->h * image->w * channels;
+    int channels = 4;
+    VkDeviceSize imageSize = texWidth * texHeight * channels;
 
     createBuffer(physicalDevice, device, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
 
     void* data;
     vkMapMemory(device, stagingBufferMemory, 0, imageSize, 0, &data);
-    memcpy(data, image->pixels, static_cast<size_t>(imageSize));
+    memcpy(data, pixels, static_cast<size_t>(imageSize));
     vkUnmapMemory(device, stagingBufferMemory);
 
-    createImage(physicalDevice, device, image->w, image->h, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureImage, textureImageMemory);
-    transitionImageLayout(device, graphicsQueue, textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    copyBufferToImage(device, graphicsQueue, stagingBuffer, textureImage, static_cast<uint32_t>(image->w), static_cast<uint32_t>(image->h));
-    transitionImageLayout(device, graphicsQueue, textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    createImage(physicalDevice, device, texWidth, texHeight, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureImage, textureImageMemory);
+    transitionImageLayout(device, graphicsQueue, commandPool, textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    copyBufferToImage(device, graphicsQueue, commandPool, stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+    transitionImageLayout(device, graphicsQueue, commandPool, textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-    SDL_DestroySurface(image);
     vkDestroyBuffer(device, stagingBuffer, nullptr);
     vkFreeMemory(device, stagingBufferMemory, nullptr);
 }
@@ -266,9 +274,9 @@ void Model::createImage(VkPhysicalDevice physicalDevice, VkDevice device, uint32
 
     vkBindImageMemory(device, image, imageMemory, 0);
 }
-void Model::transitionImageLayout(VkDevice device, VkQueue graphicsQueue, VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
+void Model::transitionImageLayout(VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
 {
-    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device);
+    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device, commandPool);
 
     VkPipelineStageFlags sourceStage;
     VkPipelineStageFlags destinationStage;
@@ -328,11 +336,11 @@ void Model::transitionImageLayout(VkDevice device, VkQueue graphicsQueue, VkImag
     }
 
     vkCmdPipelineBarrier(commandBuffer, sourceStage, destinationStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
-    endSingleTimeCommands(device, commandBuffer, graphicsQueue);
+    endSingleTimeCommands(device, commandBuffer, graphicsQueue, commandPool);
 }
-void Model::copyBufferToImage(VkDevice device, VkQueue graphicsQueue, VkBuffer buffer, VkImage image, uint32_t width, uint32_t height)
+void Model::copyBufferToImage(VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, VkBuffer buffer, VkImage image, uint32_t width, uint32_t height)
 {
-    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device);
+    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device, commandPool);
 
     VkBufferImageCopy region{};
     region.bufferOffset = 0;
@@ -347,9 +355,9 @@ void Model::copyBufferToImage(VkDevice device, VkQueue graphicsQueue, VkBuffer b
 
     vkCmdCopyBufferToImage(commandBuffer, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
-    endSingleTimeCommands(device, commandBuffer, graphicsQueue);
+    endSingleTimeCommands(device, commandBuffer, graphicsQueue, commandPool);
 }
-void Model::createTextureImageView(VkDevice device, VkImage textureImage, VkDeviceMemory textureImageMemory)
+void Model::createTextureImageView(VkDevice device, VkImageView &textureImageView, VkImage textureImage)
 {
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -364,37 +372,18 @@ void Model::createTextureImageView(VkDevice device, VkImage textureImage, VkDevi
 
     vk_check(vkCreateImageView(device, &viewInfo, nullptr, &textureImageView), "failed to create texture image view!");
 }
-void Model::createTextureSampler(VkPhysicalDevice physicalDevice, VkDevice device)
-{
-    VkPhysicalDeviceProperties properties{};
-    vkGetPhysicalDeviceProperties(physicalDevice, &properties);
 
-    VkSamplerCreateInfo samplerInfo{};
-    samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-    samplerInfo.magFilter = VK_FILTER_NEAREST;
-    samplerInfo.minFilter = VK_FILTER_NEAREST;
-    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerInfo.anisotropyEnable = VK_TRUE;
-    samplerInfo.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
-    samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-    samplerInfo.unnormalizedCoordinates = VK_FALSE;
-    samplerInfo.compareEnable = VK_FALSE;
-    samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-    samplerInfo.mipLodBias = 0.0f;
-    samplerInfo.minLod = 0.0f;
-    samplerInfo.maxLod = 0.0f;
-
-    vk_check(vkCreateSampler(device, &samplerInfo, nullptr, &textureSampler), "failed to create texture sampler!");
-}
-*/
 void Model::destroyAll(VkDevice device)
 {
     for (PrimitiveData primitiveData : primitiveDataList)
     {
-        //primitiveData.destroyTexture(device);
+        primitiveData.destroyTexture(device);
         primitiveData.destroyVertexBuffers(device);
+    }
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    {
+        vkDestroyBuffer(device, uniformBuffers[i], nullptr);
+        vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
     }
 }
