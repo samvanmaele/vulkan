@@ -1,3 +1,4 @@
+#include <SDL3/SDL_oldnames.h>
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -18,11 +19,13 @@
 #include <SDL3/SDL_video.h>
 #include <stdexcept>
 #include <SDL3/SDL.h>
+#include <GL/glew.h>
 
 #include <cstdlib>
 #include <vector>
 #include <cstdint>
 #include <atomic>
+#include <iostream>
 
 #include "common.hpp"
 #include "vk_debug.hpp"
@@ -32,34 +35,84 @@
 #include "vk_command.hpp"
 #include "vk_sync.hpp"
 
-class Triangle
+const bool forceOpenGL = true;
+
+std::vector<std::string> modelPaths
+{
+    "models/vedal987/vedal987.gltf",
+    "models/vedal987/vedal987.gltf",
+    "models/vedal987/vedal987.gltf",
+    "models/vedal987/vedal987.gltf",
+    "models/vedal987/vedal987.gltf",
+    "models/vedal987/vedal987.gltf",
+    "models/vedal987/vedal987.gltf",
+    "models/vedal987/vedal987.gltf",
+    "models/vedal987/vedal987.gltf",
+    "models/vedal987/vedal987.gltf",
+    "models/vedal987/vedal987.gltf",
+    "models/vedal987/vedal987.gltf",
+    "models/vedal987/vedal987.gltf",
+    "models/vedal987/vedal987.gltf",
+    "models/vedal987/vedal987.gltf",
+    "models/vedal987/vedal987.gltf",
+    "models/vedal987/vedal987.gltf",
+    "models/vedal987/vedal987.gltf",
+    "models/vedal987/vedal987.gltf",
+    "models/vedal987/vedal987.gltf",
+};
+
+void setThreadAffinityAndPriority()
+{
+    #ifdef _WIN32
+        HANDLE hThread = GetCurrentThread();
+        SetThreadAffinityMask(hThread, 1 << 1);
+        SetThreadPriority(hThread, THREAD_PRIORITY_HIGHEST);
+    #elif __linux__
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        const int core_id = 19;
+        CPU_SET(core_id, &cpuset);
+
+        const pthread_t thread = pthread_self();
+        pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
+
+        sched_param sch_params;
+        sch_params.sched_priority = sched_get_priority_max(SCHED_RR);
+        pthread_setschedparam(thread, SCHED_RR, &sch_params);
+    #endif
+}
+class VulkanEngine
 {
     public:
-        Triangle()
+        bool initVulkan()
         {
             initWindow();
+            volkInitialize();
 
-            #ifdef __EMSCRIPTEN__
-                pass
-            #else
-                if (!forceOpenGL && initVulkan())
-                {
-                    createRenderthread();
-                    mainLoop();
-                    cleanAll();
-                }
-                else
-                {
-                    printf("Failed to create vulkan instance\n");
-                    cleanInstance();
-                    //init openGL
-                }
-            #endif
+            if (enableValidationLayers) debugManager.init();
+            deviceManager.createInstance(window, debugManager.debugCreateInfo);
+            if (enableValidationLayers) debugManager.setupDebugMessenger(deviceManager.instance);
+            if (!deviceManager.init()) 
+            {
+                cleanInstance();
+                return false;
+            }
+
+            bufferManager.init(deviceManager.physicalDevice, deviceManager.device, deviceManager.indices, deviceManager.graphicsQueue, modelPaths);
+            frameManager.init(deviceManager.physicalDevice, deviceManager.device, window, deviceManager.surface, deviceManager.indices, deviceManager.graphicsQueue, deviceManager.swapChainSupport, bufferManager.descriptorSetLayouts);
+
+            commandManager.init(deviceManager.device, deviceManager.indices.graphicsFamily.value(), frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.renderPass, bufferManager.descriptorSets, bufferManager.models);
+            syncManager.createSyncObjects(deviceManager.device);
+
+            createRenderthread();
+            mainLoop();
+            cleanAll();
+
+            return true;
         }
 
     private:
         SDL_Window* window;
-
         DebugManager debugManager;
         DeviceManager deviceManager;
         FrameManager frameManager;
@@ -70,56 +123,7 @@ class Triangle
         void initWindow()
         {
             SDL_Init(SDL_INIT_VIDEO);
-
-            uint64_t flags = SDL_WINDOW_RESIZABLE;
-            #ifdef __EMSCRIPTEN__
-                pass
-            #else
-                flags |= SDL_WINDOW_VULKAN;
-            #endif
-
-            window = SDL_CreateWindow("...", WIDTH, HEIGHT, flags);
-        }
-        bool initVulkan()
-        {
-            volkInitialize();
-
-            if (enableValidationLayers) debugManager.init();
-            deviceManager.createInstance(window, debugManager.debugCreateInfo);
-            if (enableValidationLayers) debugManager.setupDebugMessenger(deviceManager.instance);
-            if (!deviceManager.init()) return false;
-
-            std::vector<std::string> modelPaths
-            {
-                "models/vedal987/vedal987.gltf",
-                "models/vedal987/vedal987.gltf",
-                "models/vedal987/vedal987.gltf",
-                "models/vedal987/vedal987.gltf",
-                "models/vedal987/vedal987.gltf",
-                "models/vedal987/vedal987.gltf",
-                "models/vedal987/vedal987.gltf",
-                "models/vedal987/vedal987.gltf",
-                "models/vedal987/vedal987.gltf",
-                "models/vedal987/vedal987.gltf",
-                "models/vedal987/vedal987.gltf",
-                "models/vedal987/vedal987.gltf",
-                "models/vedal987/vedal987.gltf",
-                "models/vedal987/vedal987.gltf",
-                "models/vedal987/vedal987.gltf",
-                "models/vedal987/vedal987.gltf",
-                "models/vedal987/vedal987.gltf",
-                "models/vedal987/vedal987.gltf",
-                "models/vedal987/vedal987.gltf",
-                "models/vedal987/vedal987.gltf",
-            };
-
-            bufferManager.init(deviceManager.physicalDevice, deviceManager.device, deviceManager.indices, deviceManager.graphicsQueue, modelPaths);
-            frameManager.init(deviceManager.physicalDevice, deviceManager.device, window, deviceManager.surface, deviceManager.indices, deviceManager.graphicsQueue, deviceManager.swapChainSupport, bufferManager.descriptorSetLayouts);
-
-            commandManager.init(deviceManager.device, deviceManager.indices.graphicsFamily.value(), frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.renderPass, bufferManager.descriptorSets, bufferManager.models);
-            syncManager.createSyncObjects(deviceManager.device);
-
-            return true;
+            window = SDL_CreateWindow("...", WIDTH, HEIGHT, SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN);
         }
         void recreateSwapChain()
         {
@@ -138,26 +142,6 @@ class Triangle
         std::thread renderThread;
         std::thread windowThread;
 
-        void setThreadAffinityAndPriority()
-        {
-            #ifdef _WIN32
-                HANDLE hThread = GetCurrentThread();
-                SetThreadAffinityMask(hThread, 1 << 1);
-                SetThreadPriority(hThread, THREAD_PRIORITY_HIGHEST);
-            #elif __linux__
-                cpu_set_t cpuset;
-                CPU_ZERO(&cpuset);
-                const int core_id = 19;
-                CPU_SET(core_id, &cpuset);
-
-                const pthread_t thread = pthread_self();
-                pthread_setaffinity_np(thread, sizeof(cpu_set_t), &cpuset);
-
-                sched_param sch_params;
-                sch_params.sched_priority = sched_get_priority_max(SCHED_RR);
-                pthread_setschedparam(thread, SCHED_RR, &sch_params);
-            #endif
-        }
         void mainLoop()
         {
             setThreadAffinityAndPriority();
@@ -198,15 +182,13 @@ class Triangle
                 }
                 SDL_Delay(frameDelay);
             }
-
-            renderThread.join();
         }
 
         VkFence fence;
         VkSemaphore imgAvailable;
+        VkSemaphore imgRendered = VK_NULL_HANDLE;
         uint32_t imageIndex;
         uint32_t currentFrame = 0;
-        VkSemaphore imgRendered = VK_NULL_HANDLE;
 
         VkSemaphoreSubmitInfo waitInfo
         {
@@ -305,6 +287,7 @@ class Triangle
         void cleanAll()
         {
             vkDeviceWaitIdle(deviceManager.device);
+            renderThread.join();
 
             syncManager.cleanupSyncObjects(deviceManager.device);
             frameManager.cleanupSwapChain(deviceManager.device);
@@ -326,9 +309,134 @@ class Triangle
             SDL_Quit();
         }
 };
+class OpenGLEngine
+{
+    public:
+        void initOpenGL()
+        {
+            initWindow();
+
+            glewExperimental = GL_TRUE;
+            glewInit();
+            SDL_GL_SetSwapInterval(0);
+            glEnable(GL_DEPTH_TEST);
+            glDepthFunc(GL_LEQUAL);
+            glEnable(GL_BLEND);
+            glEnable(GL_CULL_FACE);
+            glCullFace(GL_BACK);
+            glFrontFace(GL_CCW);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glViewport(0, 0, WIDTH, HEIGHT);
+            glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+            SDL_GL_SwapWindow(window);
+
+            createRenderthread();
+            mainLoop();
+            cleanAll();
+        }
+    private:
+        SDL_Window* window;
+
+        void initWindow()
+        {
+            SDL_Init(SDL_INIT_VIDEO);
+
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+
+            SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+            SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+
+            SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+            SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
+
+            window = SDL_CreateWindow("...", WIDTH, HEIGHT, SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
+            SDL_GL_CreateContext(window);
+        }
+
+        std::atomic<bool> running = true;
+        std::atomic<bool> resized = false;
+        std::atomic<uint32_t> frameCount = 0;
+        std::thread renderThread;
+        std::thread windowThread;
+
+        void mainLoop()
+        {
+            setThreadAffinityAndPriority();
+
+            uint32_t lastTime = SDL_GetTicks();
+            char titleBuffer[64];
+
+            const int targetFPS = 20;
+            const int frameDelay = 1000 / targetFPS;
+
+            while (running)
+            {
+                SDL_Event event;
+                while (SDL_PollEvent(&event))
+                {
+                    switch (event.type)
+                    {
+                        case SDL_EVENT_QUIT:
+                            running = false;
+                            break;
+                        case SDL_EVENT_WINDOW_RESIZED:
+                            resized = true;
+                            break;
+                    }
+                }
+
+                uint32_t currentTime = SDL_GetTicks();
+                uint32_t frametime = currentTime - lastTime;
+
+                if (frametime >= 1000)
+                {
+                    float fps = 1000.0f * (float)frameCount / (float)frametime;
+
+                    std::snprintf(titleBuffer, 64, "FPS: %f", fps);
+                    SDL_SetWindowTitle(window, titleBuffer);
+                    lastTime = currentTime;
+                    frameCount = 0u;
+                }
+                SDL_Delay(frameDelay);
+            }
+
+            renderThread.join();
+        }
+
+        void createRenderthread()
+        {
+            renderThread = std::thread([this]()
+            {
+                setThreadAffinityAndPriority();
+
+                while (running)
+                {
+                    frameCount++;
+                }
+            });
+        }
+        void cleanAll()
+        {
+            renderThread.join();
+        }
+};
 
 int main(int argc, char* argv[])
 {
-    Triangle app;
+    #ifdef __EMSCRIPTEN__
+        pass
+    #else
+        VulkanEngine vulkanEngine;
+        if (forceOpenGL || !vulkanEngine.initVulkan())
+        {
+            std::cout << "Failed to create vulkan instance\n" << std::endl;
+
+            OpenGLEngine OpenGLEngine;
+            OpenGLEngine.initOpenGL();
+        }
+    #endif
+
     return EXIT_SUCCESS;
 }

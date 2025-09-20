@@ -9,9 +9,8 @@ CXXFLAGS_COMMON_DEBUG   = -O0 -g3 -Wall -I./src -DSDL_MAIN_HANDLED -std=c++23
 
 ifeq ($(OS),Windows_NT)
 	# windows
-
-	TARGET = $(OUTPUT)/vulkan.exe
-	TARGET_DEBUG = $(OUTPUT_DEBUG)/vulkan.exe
+	TARGET = $(OUTPUT)/engine.exe
+	TARGET_DEBUG = $(OUTPUT_DEBUG)/engine.exe
 
 	VULKAN_LOCATION = -IC:\VulkanSDK\1.4.321.1\Include
 	SDL3_LOCATION = -IC:\SDL3-3.2.20\include
@@ -19,17 +18,17 @@ ifeq ($(OS),Windows_NT)
 	CXXFLAGS_VOLK = $(CXXFLAGS_COMMON_VOLK) $(VULKAN_LOCATION) $(SDL3_LOCATION)
 	CXXFLAGS_DEBUG = $(CXXFLAGS_COMMON_DEBUG) $(VULKAN_LOCATION) $(SDL3_LOCATION)
 
-	LDFLAGS = -fuse-ld=lld -LC:\VulkanSDK\1.4.321.1\Lib -LC:\SDL3-3.2.20\lib\x64 -lvulkan-1 -lSDL3 -lSDL3_image -lkernel32 -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 -lversion -luuid -ladvapi32 -lsetupapi -lshell32 -ldinput8
+	LDFLAGS = -fuse-ld=lld -LC:\VulkanSDK\1.4.321.1\Lib -LC:\SDL3-3.2.20\lib\x64 -lopengl32 -lGLEW32 -lvulkan-1 -lSDL3 -lSDL3_image -lkernel32 -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 -lversion -luuid -ladvapi32 -lsetupapi -lshell32 -ldinput8
 else
     # linux
-    TARGET = $(OUTPUT)/vulkan
-	TARGET_DEBUG = $(OUTPUT_DEBUG)/vulkan
+    TARGET = $(OUTPUT)/engine
+	TARGET_DEBUG = $(OUTPUT_DEBUG)/engine
 
     CXXFLAGS = $(CXXFLAGS_COMMON)
 	CXXFLAGS_VOLK = $(CXXFLAGS_COMMON_VOLK)
 	CXXFLAGS_DEBUG = $(CXXFLAGS_COMMON_DEBUG)
 
-    LDFLAGS  = -fuse-ld=lld -static-libstdc++ -static-libgcc -lvulkan -ldl -lpthread -lm -lSDL3 -lSDL3_image
+    LDFLAGS  = -fuse-ld=lld -static-libstdc++ -static-libgcc -lGL -lGLU -lGLEW -lvulkan -ldl -lpthread -lm -lSDL3 -lSDL3_image
 endif
 
 OBJS_COMMON = main.o vk_device.o vk_frames.o vk_buffers.o vk_loadGLTF.o vk_command.o vk_sync.o volk.o common.o

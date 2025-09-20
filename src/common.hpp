@@ -22,8 +22,6 @@ const std::vector<const char*> validationLayers = {"VK_LAYER_KHRONOS_validation"
     const bool enableValidationLayers = true;
 #endif
 
-const bool forceOpenGL = false;
-
 void vk_check(VkResult result, const std::string& msg);
 
 struct QueueFamilyIndices
