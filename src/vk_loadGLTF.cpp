@@ -4,23 +4,21 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <glm/ext/vector_float3.hpp>
 #include <iostream>
 #include <numeric>
 #include <stdexcept>
 #include <utility>
-#include <vulkan/vulkan_core.h>
 
-Model::Model(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, const char* filename)
+VkModel::VkModel(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, const char* filename)
 {
     tinygltf::Model model;
     tinygltf::TinyGLTF loader;
     std::string err, warn;
 
     bool res = loader.LoadASCIIFromFile(&model, &err, &warn, filename);
-    if (!warn.empty()) {std::cout << "Warning: " << warn << std::endl;}
-    if (!err.empty()) {std::cerr << "Error: " << err << std::endl;}
-    if (!res) {std::cerr << "Failed to load glTF: " << filename << std::endl;}
+    if (!warn.empty()) std::cout << "Warning: " << warn << std::endl;
+    if (!err.empty()) std::cerr << "Error: " << err << std::endl;
+    if (!res) std::cerr << "Failed to load glTF: " << filename << std::endl;
 
     const tinygltf::Scene& scene = model.scenes[model.defaultScene];
 
@@ -41,7 +39,7 @@ Model::Model(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQ
         vkMapMemory(device, uniformBuffersMemory[j], 0, bufferSize, 0, &uniformBuffersMapped[j]);
     }
 }
-void Model::bindNode(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, tinygltf::Model& model, const tinygltf::Node& node)
+void VkModel::bindNode(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, tinygltf::Model& model, const tinygltf::Node& node)
 {
     if (node.mesh >= 0) bindMesh(physicalDevice, device, graphicsQueue, commandPool, model, model.meshes[node.mesh]);
     for (int child : node.children)
@@ -49,7 +47,7 @@ void Model::bindNode(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue g
         if (child >= 0) bindNode(physicalDevice, device, graphicsQueue, commandPool, model, model.nodes[child]);
     }
 }
-void Model::bindMesh(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, tinygltf::Model& model, tinygltf::Mesh& mesh)
+void VkModel::bindMesh(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, tinygltf::Model& model, tinygltf::Mesh& mesh)
 {
     for (const auto& primitive : mesh.primitives)
     {
@@ -105,7 +103,7 @@ void Model::bindMesh(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue g
         primitiveDataList.push_back(std::move(primitiveData));
     }
 }
-AttribDatta Model::getAttrib(tinygltf::Model& model, size_t &vecSize, int attribPos, bool calculatingPositions)
+AttribDatta VkModel::getAttrib(tinygltf::Model& model, size_t &vecSize, int attribPos, bool calculatingPositions)
 {
     const auto& accessor = model.accessors[attribPos];
     const auto& bufferView = model.bufferViews[accessor.bufferView];
@@ -122,7 +120,7 @@ AttribDatta Model::getAttrib(tinygltf::Model& model, size_t &vecSize, int attrib
     return attrib;
 }
 
-void Model::stageBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, const void* srcData, size_t dataSize, VkBufferUsageFlags usage, VkBuffer &buffer, VkDeviceMemory &bufferMemory)
+void VkModel::stageBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, const void* srcData, size_t dataSize, VkBufferUsageFlags usage, VkBuffer &buffer, VkDeviceMemory &bufferMemory)
 {
     VkBuffer stagingBuffer;
     VkDeviceMemory stagingBufferMemory;
@@ -139,7 +137,7 @@ void Model::stageBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkQueu
     vkDestroyBuffer(device, stagingBuffer, nullptr);
     vkFreeMemory(device, stagingBufferMemory, nullptr);
 }
-void Model::createBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer &buffer, VkDeviceMemory &bufferMemory)
+void VkModel::createBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer &buffer, VkDeviceMemory &bufferMemory)
 {
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -160,7 +158,7 @@ void Model::createBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkDev
     vk_check(vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory), "failed to allocate buffer memory!");
     vkBindBufferMemory(device, buffer, bufferMemory, 0);
 }
-uint32_t Model::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties)
+uint32_t VkModel::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties)
 {
     VkPhysicalDeviceMemoryProperties memProperties;
     vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
@@ -174,7 +172,7 @@ uint32_t Model::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFil
     }
     throw std::runtime_error("failed to find suitable memory type!");
 }
-void Model::copyBuffer(VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
+void VkModel::copyBuffer(VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
 {
     VkCommandBuffer commandBuffer = beginSingleTimeCommands(device, commandPool);
 
@@ -186,7 +184,7 @@ void Model::copyBuffer(VkDevice device, VkQueue graphicsQueue, VkCommandPool com
 
     endSingleTimeCommands(device, commandBuffer, graphicsQueue, commandPool);
 }
-VkCommandBuffer Model::beginSingleTimeCommands(VkDevice &device, VkCommandPool commandPool)
+VkCommandBuffer VkModel::beginSingleTimeCommands(VkDevice &device, VkCommandPool commandPool)
 {
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -205,7 +203,7 @@ VkCommandBuffer Model::beginSingleTimeCommands(VkDevice &device, VkCommandPool c
 
     return commandBuffer;
 }
-void Model::endSingleTimeCommands(VkDevice &device, VkCommandBuffer &commandBuffer, VkQueue &graphicsQueue, VkCommandPool commandPool)
+void VkModel::endSingleTimeCommands(VkDevice &device, VkCommandBuffer &commandBuffer, VkQueue &graphicsQueue, VkCommandPool commandPool)
 {
     vkEndCommandBuffer(commandBuffer);
 
@@ -220,7 +218,7 @@ void Model::endSingleTimeCommands(VkDevice &device, VkCommandBuffer &commandBuff
     vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
 }
 
-void Model::createTextureImage(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, VkImage &textureImage, VkDeviceMemory &textureImageMemory, const unsigned char* pixels, int texWidth, int texHeight)
+void VkModel::createTextureImage(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, VkImage &textureImage, VkDeviceMemory &textureImageMemory, const unsigned char* pixels, int texWidth, int texHeight)
 {
     VkBuffer stagingBuffer;
     VkDeviceMemory stagingBufferMemory;
@@ -243,7 +241,7 @@ void Model::createTextureImage(VkPhysicalDevice physicalDevice, VkDevice device,
     vkDestroyBuffer(device, stagingBuffer, nullptr);
     vkFreeMemory(device, stagingBufferMemory, nullptr);
 }
-void Model::createImage(VkPhysicalDevice physicalDevice, VkDevice device, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory)
+void VkModel::createImage(VkPhysicalDevice physicalDevice, VkDevice device, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory)
 {
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -274,7 +272,7 @@ void Model::createImage(VkPhysicalDevice physicalDevice, VkDevice device, uint32
 
     vkBindImageMemory(device, image, imageMemory, 0);
 }
-void Model::transitionImageLayout(VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
+void VkModel::transitionImageLayout(VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
 {
     VkCommandBuffer commandBuffer = beginSingleTimeCommands(device, commandPool);
 
@@ -338,7 +336,7 @@ void Model::transitionImageLayout(VkDevice device, VkQueue graphicsQueue, VkComm
     vkCmdPipelineBarrier(commandBuffer, sourceStage, destinationStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
     endSingleTimeCommands(device, commandBuffer, graphicsQueue, commandPool);
 }
-void Model::copyBufferToImage(VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, VkBuffer buffer, VkImage image, uint32_t width, uint32_t height)
+void VkModel::copyBufferToImage(VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, VkBuffer buffer, VkImage image, uint32_t width, uint32_t height)
 {
     VkCommandBuffer commandBuffer = beginSingleTimeCommands(device, commandPool);
 
@@ -357,7 +355,7 @@ void Model::copyBufferToImage(VkDevice device, VkQueue graphicsQueue, VkCommandP
 
     endSingleTimeCommands(device, commandBuffer, graphicsQueue, commandPool);
 }
-void Model::createTextureImageView(VkDevice device, VkImageView &textureImageView, VkImage textureImage)
+void VkModel::createTextureImageView(VkDevice device, VkImageView &textureImageView, VkImage textureImage)
 {
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -373,7 +371,7 @@ void Model::createTextureImageView(VkDevice device, VkImageView &textureImageVie
     vk_check(vkCreateImageView(device, &viewInfo, nullptr, &textureImageView), "failed to create texture image view!");
 }
 
-void Model::destroyAll(VkDevice device)
+void VkModel::destroyAll(VkDevice device)
 {
     for (PrimitiveData primitiveData : primitiveDataList)
     {

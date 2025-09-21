@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <vulkan/vulkan_core.h>
 
-void CommandManager::init(VkDevice &device, uint32_t graphicsFamilyIndex, size_t swapChainSize, std::vector<VkFramebuffer> &swapChainFramebuffers, VkExtent2D &swapChainExtent, VkPipeline &graphicsPipeline, VkPipelineLayout pipelineLayout, VkRenderPass &renderPass, std::array<std::vector<VkDescriptorSet>, 2> descriptorSets, const std::vector<Model>& models)
+void CommandManager::init(VkDevice &device, uint32_t graphicsFamilyIndex, size_t swapChainSize, std::vector<VkFramebuffer> &swapChainFramebuffers, VkExtent2D &swapChainExtent, VkPipeline &graphicsPipeline, VkPipelineLayout pipelineLayout, VkRenderPass &renderPass, std::array<std::vector<VkDescriptorSet>, 2> descriptorSets, const std::vector<VkModel>& models)
 {
     createCommandPool(device, graphicsFamilyIndex);
     createCommandBuffers(device, swapChainSize, swapChainFramebuffers, swapChainExtent, graphicsPipeline, pipelineLayout, renderPass, descriptorSets, models);
@@ -17,7 +17,7 @@ void CommandManager::createCommandPool(VkDevice &device, uint32_t graphicsFamily
 
     vk_check(vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool), "failed to create command pool!");
 }
-void CommandManager::createCommandBuffers(VkDevice &device, size_t swapchainSize, std::vector<VkFramebuffer> &swapChainFramebuffers, VkExtent2D &swapChainExtent, VkPipeline &graphicsPipeline, VkPipelineLayout pipelineLayout, VkRenderPass &renderPass, std::array<std::vector<VkDescriptorSet>, 2> descriptorSets, const std::vector<Model>& models)
+void CommandManager::createCommandBuffers(VkDevice &device, size_t swapchainSize, std::vector<VkFramebuffer> &swapChainFramebuffers, VkExtent2D &swapChainExtent, VkPipeline &graphicsPipeline, VkPipelineLayout pipelineLayout, VkRenderPass &renderPass, std::array<std::vector<VkDescriptorSet>, 2> descriptorSets, const std::vector<VkModel>& models)
 {
     commandBuffers.resize(swapchainSize);
 
@@ -34,7 +34,7 @@ void CommandManager::createCommandBuffers(VkDevice &device, size_t swapchainSize
         recordCommandBuffer(commandBuffers[i], swapChainFramebuffers[i], swapChainExtent, graphicsPipeline, pipelineLayout, renderPass, descriptorSets, models, i);
     }
 }
-void CommandManager::recordCommandBuffer(VkCommandBuffer &commandBuffer, VkFramebuffer &swapChainFramebuffer, VkExtent2D &swapChainExtent, VkPipeline &graphicsPipeline, VkPipelineLayout pipelineLayout, VkRenderPass &renderPass, std::array<std::vector<VkDescriptorSet>, 2> descriptorSets, const std::vector<Model>& models, size_t i)
+void CommandManager::recordCommandBuffer(VkCommandBuffer &commandBuffer, VkFramebuffer &swapChainFramebuffer, VkExtent2D &swapChainExtent, VkPipeline &graphicsPipeline, VkPipelineLayout pipelineLayout, VkRenderPass &renderPass, std::array<std::vector<VkDescriptorSet>, 2> descriptorSets, const std::vector<VkModel>& models, size_t i)
 {
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;

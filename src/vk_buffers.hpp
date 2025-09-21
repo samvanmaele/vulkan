@@ -1,6 +1,5 @@
 #pragma once
 #include "common.hpp"
-
 #include "vk_loadGLTF.hpp"
 
 class BufferManager
@@ -19,7 +18,7 @@ class BufferManager
         VkDescriptorSetLayout objectDescriptorSetLayout;
         std::vector<VkDescriptorSet> globalDescriptorSets;
         std::vector<VkDescriptorSet> objectDescriptorSets;
-        std::vector<Model> models;
+        std::vector<VkModel> models;
 
         std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts;
         std::array<std::vector<VkDescriptorSet>, 2> descriptorSets;

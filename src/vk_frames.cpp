@@ -341,8 +341,8 @@ void FrameManager::createRenderPass(VkDevice &device)
 }
 void FrameManager::createGraphicsPipeline(VkDevice &device, std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts)
 {
-    auto vertShaderCode = readFile("shaders/triangle.vert.spv");
-    auto fragShaderCode = readFile("shaders/triangle.frag.spv");
+    auto vertShaderCode = readFile("shaders/vulkan/triangle.vert.spv");
+    auto fragShaderCode = readFile("shaders/vulkan/triangle.frag.spv");
 
     VkShaderModule vertShaderModule = createShaderModule(device, vertShaderCode);
     VkShaderModule fragShaderModule = createShaderModule(device, fragShaderCode);
@@ -359,8 +359,8 @@ void FrameManager::createGraphicsPipeline(VkDevice &device, std::array<VkDescrip
     fragShaderStageInfo.pName = "main";
     VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
 
-    auto bindingDescription = PrimitiveData::getBindingDescription();
-    auto attributeDescriptions = PrimitiveData::getAttributeDescriptions();
+    auto bindingDescription = getBindingDescription();
+    auto attributeDescriptions = getAttributeDescriptions();
 
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
