@@ -4,7 +4,47 @@
 #include <cstdint>
 #include <fstream>
 #include <iostream>
-#include <vulkan/vulkan_core.h>
+#include <array>
+
+static std::array<VkVertexInputBindingDescription, 3> getBindingDescription()
+{
+    std::array<VkVertexInputBindingDescription, 3> bindings{};
+
+    bindings[0].binding = 0;
+    bindings[0].stride = sizeof(glm::vec3);
+    bindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+    bindings[1].binding = 1;
+    bindings[1].stride = sizeof(glm::vec3);
+    bindings[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+    bindings[2].binding = 2;
+    bindings[2].stride = sizeof(glm::vec2);
+    bindings[2].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+    return bindings;
+}
+static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions()
+{
+    std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions{};
+
+    attributeDescriptions[0].binding = 0;
+    attributeDescriptions[0].location = 0;
+    attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attributeDescriptions[0].offset = 0;
+
+    attributeDescriptions[1].binding = 1;
+    attributeDescriptions[1].location = 1;
+    attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attributeDescriptions[1].offset = 0;
+
+    attributeDescriptions[2].binding = 2;
+    attributeDescriptions[2].location = 2;
+    attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
+    attributeDescriptions[2].offset = 0;
+
+    return attributeDescriptions;
+}
 
 void FrameManager::init(VkPhysicalDevice physicalDevice, VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, VkQueue graphicsQueue, SwapChainSupportDetails &swapChainSupport, std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts)
 {

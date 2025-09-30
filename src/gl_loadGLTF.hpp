@@ -64,6 +64,8 @@ class GlModel
 			uint32_t textureIndex = -1;
 		};
 		std::vector<PrimitiveData> primitiveDataList;
+
+		glm::mat4 transmat;
 		//std::vector<boundingbox> boundingboxes;
 		//boundingbox aabb;
 

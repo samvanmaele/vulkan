@@ -48,8 +48,9 @@ class VkModel
                 vkFreeMemory(device, indexBufferMemory, nullptr);
             }
         };
-
         std::vector<PrimitiveData> primitiveDataList;
+
+        glm::mat4 transmat;
         std::vector<VkBuffer> uniformBuffers;
         std::vector<VkDeviceMemory> uniformBuffersMemory;
         std::vector<void*> uniformBuffersMapped;

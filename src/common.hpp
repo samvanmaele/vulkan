@@ -8,7 +8,6 @@
 #include <vector>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include <array>
 #include <vulkan/vulkan_core.h>
 
 const int MAX_FRAMES_IN_FLIGHT = 3;
@@ -40,46 +39,6 @@ struct SwapChainSupportDetails
     std::vector<VkSurfaceFormatKHR> formats;
     std::vector<VkPresentModeKHR> presentModes;
 };
-
-static std::array<VkVertexInputBindingDescription, 3> getBindingDescription()
-{
-    std::array<VkVertexInputBindingDescription, 3> bindings{};
-
-    bindings[0].binding = 0;
-    bindings[0].stride = sizeof(glm::vec3);
-    bindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-    bindings[1].binding = 1;
-    bindings[1].stride = sizeof(glm::vec3);
-    bindings[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-    bindings[2].binding = 2;
-    bindings[2].stride = sizeof(glm::vec2);
-    bindings[2].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-    return bindings;
-}
-static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions()
-{
-    std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions{};
-
-    attributeDescriptions[0].binding = 0;
-    attributeDescriptions[0].location = 0;
-    attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attributeDescriptions[0].offset = 0;
-
-    attributeDescriptions[1].binding = 1;
-    attributeDescriptions[1].location = 1;
-    attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attributeDescriptions[1].offset = 0;
-
-    attributeDescriptions[2].binding = 2;
-    attributeDescriptions[2].location = 2;
-    attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-    attributeDescriptions[2].offset = 0;
-
-    return attributeDescriptions;
-}
 
 struct GlobalUniformBufferObject
 {

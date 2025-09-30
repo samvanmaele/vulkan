@@ -252,59 +252,19 @@ void BufferManager::createDescriptorSets(VkDevice device)
 
     descriptorSets = {globalDescriptorSets, objectDescriptorSets};
 }
-void BufferManager::updateUniformBuffer(uint32_t currentFrame)
+void BufferManager::updateView(uint32_t currentFrame, glm::mat4 view)
 {
-    static auto startTime = std::chrono::high_resolution_clock::now();
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-
-    glm::vec3 position = glm::vec3(0,5.5,3);
-    glm::vec3 eulers = glm::vec3(3.1415/2,-3.1415/8,0);
-
-    float cosX = std::cos(eulers.x);
-    float sinX = std::sin(eulers.x);
-    float cosY = std::cos(eulers.y);
-    float sinY = std::sin(eulers.y);
-
-    glm::vec3 forward = glm::vec3(cosX*cosY, sinY, -sinX*cosY);
-    glm::vec3 right = glm::vec3(sinX, 0, cosX);
-    glm::vec3 up = glm::vec3(-cosX*sinY, cosY, sinX*sinY);
-
-    glm::mat4 view;
-    view[0][0] = right.x;
-    view[1][0] = right.y;
-    view[2][0] = right.z;
-    view[3][0] = -glm::dot(right, position);
-
-    view[0][1] = up.x;
-    view[1][1] = up.y;
-    view[2][1] = up.z;
-    view[3][1] = -glm::dot(up, position);
-
-    view[0][2] = -forward.x;
-    view[1][2] = -forward.y;
-    view[2][2] = -forward.z;
-    view[3][2] = glm::dot(forward, position);
-
-    view[0][3] = 0.0f;
-    view[1][3] = 0.0f;
-    view[2][3] = 0.0f;
-    view[3][3] = 1.0f;
-
     GlobalUniformBufferObject ubo{};
     ubo.view = view;
     ubo.proj = glm::perspective(glm::radians(45.0f), (float) WIDTH / (float) HEIGHT, 0.1f, 50.0f);
     ubo.proj[1][1] *= -1;
     memcpy(globalUniformBuffersMapped[currentFrame], &ubo, sizeof(ubo));
-
-    for (size_t i = 0; i < models.size(); i++)
+}
+void BufferManager::updateUniformBuffer(uint32_t currentFrame)
+{
+    for (VkModel model : models)
     {
-        ObjectUniformBufferObject objectUbo{};
-        objectUbo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-        objectUbo.model[3][2] -= 5;
-        objectUbo.model[3][0] += ((i % 5) - 2.0) * 1.3;
-        objectUbo.model[3][1] += (i/5) * 1.3;
-        memcpy(models[i].uniformBuffersMapped[currentFrame], &objectUbo, sizeof(objectUbo));
+        memcpy(model.uniformBuffersMapped[currentFrame], &model.transmat, sizeof(glm::mat4));
     }
 }
 

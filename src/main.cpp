@@ -1,3 +1,4 @@
+#include <glm/ext/matrix_float4x4.hpp>
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -38,6 +39,9 @@
 
 const bool forceOpenGL = false;
 
+const int targetFPS = 60;
+const int frameDelay = 1000 / targetFPS;
+
 std::vector<std::string> modelPaths
 {
     "models/vedal987/vedal987.gltf",
@@ -60,6 +64,70 @@ std::vector<std::string> modelPaths
     "models/vedal987/vedal987.gltf",
     "models/vedal987/vedal987.gltf",
     "models/vedal987/vedal987.gltf",
+};
+
+class Player
+{
+    public:
+        glm::vec3 camPosition = glm::vec3(0,5.5,3);
+        glm::vec3 camEulers = glm::vec3(3.1415/2,-3.1415/8,0);
+        glm::vec3 camForward = glm::vec3(0,0,1);
+        glm::vec3 camRight = glm::vec3(1,0,0);
+        glm::vec3 camUp = glm::vec3(0,1,0);
+        float zoom = 0.0;
+
+        glm::vec3 position = glm::vec3(0,0,0);
+        glm::vec3 eulers = glm::vec3(0,0,0);
+        glm::vec3 forward = glm::vec3(0,0,1);
+        glm::vec3 right = glm::vec3(1,0,0);
+
+        glm::mat4 update(float moveX, float moveY, float deltaTime)
+        {
+            float cosX = std::cos(camEulers.x);
+            float sinX = std::sin(camEulers.x);
+            float cosY = std::cos(camEulers.y);
+            float sinY = std::sin(camEulers.y);
+
+            camForward = glm::vec3(cosX*cosY,  sinY, -sinX*cosY);
+            camRight   = glm::vec3(sinX,       0,    cosX      );
+            camUp      = glm::vec3(-cosX*sinY, cosY, sinX*sinY );
+
+            forward = glm::vec3(cosX,  0, -sinX);
+            right   = glm::vec3(-sinX, 0, -cosX);
+
+            if (moveX || moveY)
+            {
+                glm::vec3 movement = glm::normalize(forward * moveY - right * moveX);
+                //movement = checkCollision(movement) * deltaTime * 0.02f;
+                position += movement;
+                //makeTransmat();
+            }
+
+            camPosition = position - camForward * zoom;
+
+            glm::mat4 view;
+            view[0][0] = camRight.x;
+            view[1][0] = camRight.y;
+            view[2][0] = camRight.z;
+            view[3][0] = -glm::dot(camRight, camPosition);
+
+            view[0][1] = camUp.x;
+            view[1][1] = camUp.y;
+            view[2][1] = camUp.z;
+            view[3][1] = -glm::dot(camUp, camPosition);
+
+            view[0][2] = -camForward.x;
+            view[1][2] = -camForward.y;
+            view[2][2] = -camForward.z;
+            view[3][2] = glm::dot(camForward, camPosition);
+
+            view[0][3] = 0.0f;
+            view[1][3] = 0.0f;
+            view[2][3] = 0.0f;
+            view[3][3] = 1.0f;
+
+            return view;
+        }
 };
 
 void setThreadAffinityAndPriority()
@@ -93,7 +161,7 @@ class VulkanEngine
             if (enableValidationLayers) debugManager.init();
             deviceManager.createInstance(window, debugManager.debugCreateInfo);
             if (enableValidationLayers) debugManager.setupDebugMessenger(deviceManager.instance);
-            if (!deviceManager.init()) 
+            if (!deviceManager.init())
             {
                 cleanInstance();
                 return false;
@@ -139,22 +207,49 @@ class VulkanEngine
 
         std::atomic<bool> running = true;
         std::atomic<bool> resized = false;
+        std::atomic<bool> updateCam = false;
         std::atomic<uint32_t> frameCount = 0;
+        std::atomic<uint32_t> frametime;
+        std::atomic<uint32_t> time;
         std::thread renderThread;
-        std::thread windowThread;
+
+        struct AtomicMat4
+        {
+            glm::mat4 buffers[2];
+            std::atomic<int> current{0};
+
+            void store(const glm::mat4& newMat)
+            {
+                int next = 1 - current.load(std::memory_order_relaxed);
+                buffers[next] = newMat;
+                current.store(next, std::memory_order_release);
+            }
+            glm::mat4 load() const
+            {
+                int idx = current.load(std::memory_order_acquire);
+                return buffers[idx];
+            }
+        };
+        AtomicMat4 view;
+
+        Player player;
 
         void mainLoop()
         {
             setThreadAffinityAndPriority();
 
+            uint32_t startTime = SDL_GetTicks();
             uint32_t lastTime = SDL_GetTicks();
             char titleBuffer[64];
 
-            const int targetFPS = 20;
-            const int frameDelay = 1000 / targetFPS;
+            std::array<bool, SDL_SCANCODE_COUNT> keys{};
 
             while (running)
             {
+                uint32_t currentTime = SDL_GetTicks();
+                frametime = currentTime - lastTime;
+                time = currentTime - startTime;
+
                 SDL_Event event;
                 while (SDL_PollEvent(&event))
                 {
@@ -166,11 +261,40 @@ class VulkanEngine
                         case SDL_EVENT_WINDOW_RESIZED:
                             resized = true;
                             break;
+                        case SDL_EVENT_MOUSE_MOTION:
+                            player.camEulers.y = std::min(0.9, std::max(-0.9, player.camEulers.y - event.motion.yrel * 0.001));
+                            player.camEulers.x -= event.motion.xrel * 0.001;
+                            updateCam = true;
+                            break;
+                        case SDL_EVENT_KEY_DOWN:
+                            keys[event.key.scancode] = true;
+                            break;
+                        case SDL_EVENT_KEY_UP:
+                            keys[event.key.scancode] = false;
+                            break;
                     }
                 }
 
-                uint32_t currentTime = SDL_GetTicks();
-                uint32_t frametime = currentTime - lastTime;
+                glm::vec2 input{0.0f, 0.0f};
+                if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP])    input.y += 1.0f;
+                if (keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN])  input.y -= 1.0f;
+                if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT])  input.x -= 1.0f;
+                if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT]) input.x += 1.0f;
+
+                if (updateCam || input.x != 0.0f || input.y != 0.0f)
+                {
+                    updateCam.store(true, std::memory_order_release);
+                    glm::mat4 tempView = player.update(input.x, input.y, frametime);
+                    view.store(tempView);
+                }
+
+                for (int i = 0; i < bufferManager.models.size(); i++)
+                {
+                    bufferManager.models[i].transmat = glm::rotate(glm::mat4(1.0f), 0.001f * time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+                    bufferManager.models[i].transmat[3][2] -= 5;
+                    bufferManager.models[i].transmat[3][0] += ((i % 5) - 2.0) * 1.3;
+                    bufferManager.models[i].transmat[3][1] += int(i/5) * 1.3;
+                }
 
                 if (frametime >= 1000)
                 {
@@ -230,6 +354,7 @@ class VulkanEngine
             renderThread = std::thread([this]()
             {
                 setThreadAffinityAndPriority();
+                glm::mat4 cachedView;
 
                 while (running)
                 {
@@ -239,6 +364,12 @@ class VulkanEngine
                     vkWaitForFences(deviceManager.device, 1, &fence, VK_TRUE, UINT64_MAX);
                     if (!acquireImage()) continue;;
                     vkResetFences(deviceManager.device, 1, &fence);
+
+                    if (updateCam.exchange(false))
+                    {
+                        cachedView = view.load();
+                    }
+                    bufferManager.updateView(currentFrame, cachedView);
 
                     bufferManager.updateUniformBuffer(currentFrame);
                     submitQueue();
@@ -313,12 +444,15 @@ class VulkanEngine
 class OpenGLEngine
 {
     public:
-        void initOpenGL()
+        OpenGLEngine()
         {
             initWindow();
             createRenderthread();
             mainLoop();
-            cleanAll();
+        }
+        ~OpenGLEngine()
+        {
+            renderThread.join();
         }
     private:
         SDL_Window* window;
@@ -342,24 +476,52 @@ class OpenGLEngine
 
         std::atomic<bool> running = true;
         std::atomic<bool> resized = false;
+        std::atomic<bool> updateCam = false;
         std::atomic<uint32_t> frameCount = 0;
+        std::atomic<uint32_t> frametime;
+        std::atomic<uint32_t> time;
         std::thread renderThread;
-        std::thread windowThread;
+
+        struct AtomicMat4
+        {
+            glm::mat4 buffers[2];
+            std::atomic<int> current{0};
+
+            void store(const glm::mat4& newMat)
+            {
+                int next = 1 - current.load(std::memory_order_relaxed);
+                buffers[next] = newMat;
+                current.store(next, std::memory_order_release);
+            }
+            glm::mat4 load() const
+            {
+                int idx = current.load(std::memory_order_acquire);
+                return buffers[idx];
+            }
+        };
+        AtomicMat4 view;
+
+        GLuint viewpos;
+        GLint modelpos;
+
+        Player player;
+        std::vector<GlModel> models;
 
         void mainLoop()
         {
             setThreadAffinityAndPriority();
 
+            uint32_t startTime = SDL_GetTicks();
             uint32_t lastTime = SDL_GetTicks();
             char titleBuffer[64];
 
-            const int targetFPS = 60;
-            const int frameDelay = 1000 / targetFPS;
+            std::array<bool, SDL_SCANCODE_COUNT> keys{};
 
             while (running)
             {
-                bool updateCam = false;
-                glm::vec2 move = glm::vec2(0,0);
+                uint32_t currentTime = SDL_GetTicks();
+                frametime = currentTime - lastTime;
+                time = currentTime - startTime;
 
                 SDL_Event event;
                 while (SDL_PollEvent(&event))
@@ -373,27 +535,43 @@ class OpenGLEngine
                             resized = true;
                             break;
                         case SDL_EVENT_MOUSE_MOTION:
-                            //playobj.object.cam.eulers.y = std::min(0.9, std::max(-0.9, playobj.object.cam.eulers.y - event.motion.yrel * 0.001));
-                            //playobj.object.cam.eulers.x -= event.motion.xrel * 0.001;
+                            player.camEulers.y = std::min(0.9, std::max(-0.9, player.camEulers.y - event.motion.yrel * 0.001));
+                            player.camEulers.x -= event.motion.xrel * 0.001;
                             updateCam = true;
                             break;
                         case SDL_EVENT_KEY_DOWN:
-                            switch (event.key.scancode)
-                            {
-                                case SDL_SCANCODE_W: case SDL_SCANCODE_UP:    move.y += 1; break;
-                                case SDL_SCANCODE_S: case SDL_SCANCODE_DOWN:  move.y -= 1; break;
-                                case SDL_SCANCODE_A: case SDL_SCANCODE_LEFT:  move.x -= 1; break;
-                                case SDL_SCANCODE_D: case SDL_SCANCODE_RIGHT: move.x += 1; break;
-                                default: break;
-                            }
+                            keys[event.key.scancode] = true;
+                            break;
+                        case SDL_EVENT_KEY_UP:
+                            keys[event.key.scancode] = false;
+                            break;
                     }
                 }
 
-                //if (move.x or move.y) playobj.object.update(move, deltaTime); playobj.object.updateCam();
-                //if (updateCam) playobj.object.updateCam();
+                glm::vec2 input{0.0f, 0.0f};
+                if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP])    input.y += 1.0f;
+                if (keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN])  input.y -= 1.0f;
+                if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT])  input.x -= 1.0f;
+                if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT]) input.x += 1.0f;
 
-                uint32_t currentTime = SDL_GetTicks();
-                uint32_t frametime = currentTime - lastTime;
+                if (updateCam || input.x != 0.0f || input.y != 0.0f)
+                {
+                    updateCam.store(true, std::memory_order_release);
+                    glm::mat4 tempView = player.update(input.x, input.y, frametime);
+                    view.store(tempView);
+                }
+
+                //camData.camPos = position;
+                //glBindBuffer(GL_UNIFORM_BUFFER, uboCampos);
+                //glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(camData), &camData);
+
+                for (int i = 0; i < models.size(); i++)
+                {
+                    models[i].transmat = glm::rotate(glm::mat4(1.0f), 0.001f * time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+                    models[i].transmat[3][2] -= 5;
+                    models[i].transmat[3][0] += ((i % 5) - 2.0) * 1.3;
+                    models[i].transmat[3][1] += int(i/5) * 1.3;
+                }
 
                 if (frametime >= 1000)
                 {
@@ -410,7 +588,6 @@ class OpenGLEngine
             renderThread.join();
         }
 
-        GLint modelpos;
         void createRenderthread()
         {
             renderThread = std::thread([this]()
@@ -441,7 +618,6 @@ class OpenGLEngine
                 unsigned int shaderProgram = makeShader("shaders/openGL/shader3D.vs", "shaders/openGL/shader3D.fs");
                 updateUniformBuffer(shaderProgram);
 
-                std::vector<GlModel> models;
                 for (const auto& filename : modelPaths)
                 {
                     models.emplace_back(filename.c_str());
@@ -452,22 +628,20 @@ class OpenGLEngine
                     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
                     glUseProgram(shaderProgram);
 
-                    //glUniformMatrix4fv(modelpos, 1, GL_FALSE, &playobj.object.transmat[0][0]);
-                    //playobj.model->drawModel();
-
-                    static auto startTime = std::chrono::high_resolution_clock::now();
-                    auto currentTime = std::chrono::high_resolution_clock::now();
-                    float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - startTime).count();
-
-                    //for (GlModel &model : models)
-                    for (int i = 0; i < models.size(); i++)
+                    if (updateCam.exchange(false))
                     {
-                        glm::mat4 model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-                        model[3][2] -= 5;
-                        model[3][0] += ((i % 5) - 2.0) * 1.3;
-                        model[3][1] += (i/5) * 1.3;
-                        glUniformMatrix4fv(modelpos, 1, GL_FALSE, &model[0][0]);
-                        models[i].drawModel();
+                        glm::mat4 mat = view.load();
+                        glBindBuffer(GL_UNIFORM_BUFFER, viewpos);
+                        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), &mat);
+                    }
+
+                    //glUniformMatrix4fv(modelpos, 1, GL_FALSE, &playobj.object.transmat[0][0]);
+                    //player.model.drawModel();
+
+                    for (GlModel &model : models)
+                    {
+                        glUniformMatrix4fv(modelpos, 1, GL_FALSE, &model.transmat[0][0]);
+                        model.drawModel();
                     }
 
                     glDisable(GL_CULL_FACE);
@@ -523,13 +697,12 @@ class OpenGLEngine
             glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float) WIDTH / (float) HEIGHT, 0.1f, 50.0f);
 
             GLuint uboProjection;
-            GLuint uboView;
 
             glGenBuffers(1, &uboProjection);
             glBindBuffer(GL_UNIFORM_BUFFER, uboProjection);
             glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), &proj, GL_STATIC_DRAW);
-            glGenBuffers(1, &uboView);
-            glBindBuffer(GL_UNIFORM_BUFFER, uboView);
+            glGenBuffers(1, &viewpos);
+            glBindBuffer(GL_UNIFORM_BUFFER, viewpos);
             glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), &view, GL_DYNAMIC_DRAW);
 
             GLuint blockIndex;
@@ -540,13 +713,9 @@ class OpenGLEngine
 
             blockIndex = glGetUniformBlockIndex(shader, "VIEW");
             glUniformBlockBinding(shader, blockIndex, 1);
-            glBindBufferBase(GL_UNIFORM_BUFFER, blockIndex, uboView);
+            glBindBufferBase(GL_UNIFORM_BUFFER, blockIndex, viewpos);
 
             modelpos = glGetUniformLocation(shader, "model");
-        }
-        void cleanAll()
-        {
-            renderThread.join();
         }
 };
 
@@ -559,9 +728,7 @@ int main(int argc, char* argv[])
         if (forceOpenGL || !vulkanEngine.initVulkan())
         {
             std::cout << "Failed to create vulkan instance\n" << std::endl;
-
-            OpenGLEngine OpenGLEngine;
-            OpenGLEngine.initOpenGL();
+            OpenGLEngine();
         }
     #endif
 

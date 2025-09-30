@@ -29,6 +29,7 @@ class BufferManager
         void createUniformBuffers(VkPhysicalDevice physicalDevice, VkDevice device);
         void createDescriptorPool(VkDevice device);
         void createDescriptorSets(VkDevice device);
+        void updateView(uint32_t currentFrame, glm::mat4 view);
         void updateUniformBuffer(uint32_t currentFrame);
         void destroyAll(VkDevice device);
         void destroyUniformBuffers(VkDevice device);
