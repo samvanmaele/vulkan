@@ -8,7 +8,6 @@
 #include <vector>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include <vulkan/vulkan_core.h>
 
 const int MAX_FRAMES_IN_FLIGHT = 3;
 extern int WIDTH;

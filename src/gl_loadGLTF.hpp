@@ -1,8 +1,7 @@
 #pragma once
 #include <tinygltf/tiny_gltf.h>
-//#include <string>
 #include <glm/glm.hpp>
-#include <glm/gtc/type_ptr.hpp>
+//#include <string>
 //#include <optional>
 
 #ifdef __EMSCRIPTEN__
@@ -69,6 +68,7 @@ class GlModel
 		//std::vector<boundingbox> boundingboxes;
 		//boundingbox aabb;
 
+		GlModel() = default;
 		GlModel(const char* filename);
 		void drawModel();
 		void drawDepth();

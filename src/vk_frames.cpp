@@ -1,5 +1,6 @@
 #include "vk_frames.hpp"
 #include "common.hpp"
+#include "vk_buffers.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <fstream>
@@ -172,25 +173,11 @@ void FrameManager::createImage(VkPhysicalDevice physicalDevice, VkDevice device,
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(physicalDevice, memRequirements.memoryTypeBits, properties);
+    allocInfo.memoryTypeIndex = BufferManager::findMemoryType(physicalDevice, memRequirements.memoryTypeBits, properties);
 
     vk_check(vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory), "failed to allocate image memory!");
 
     vkBindImageMemory(device, image, imageMemory, 0);
-}
-uint32_t FrameManager::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties)
-{
-    VkPhysicalDeviceMemoryProperties memProperties;
-    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
-
-    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++)
-    {
-        if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties)
-        {
-            return i;
-        }
-    }
-    throw std::runtime_error("failed to find suitable memory type!");
 }
 VkImageView FrameManager::createImageView(VkDevice &device, VkImage image, VkFormat format, VkImageAspectFlags aspectFlags)
 {
@@ -226,7 +213,7 @@ void FrameManager::transitionImageLayout(VkDevice device, uint32_t graphicsFamil
     VkCommandPool commandPool;
     vk_check(vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool), "failed to create command pool!");
 
-    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device,commandPool);
+    VkCommandBuffer commandBuffer = BufferManager::beginSingleTimeCommands(device,commandPool);
 
     VkPipelineStageFlags sourceStage;
     VkPipelineStageFlags destinationStage;
@@ -287,41 +274,8 @@ void FrameManager::transitionImageLayout(VkDevice device, uint32_t graphicsFamil
 
     vkCmdPipelineBarrier(commandBuffer, sourceStage, destinationStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
 
-    endSingleTimeCommands(device, commandBuffer, graphicsQueue, commandPool);
+    BufferManager::endSingleTimeCommands(device, commandBuffer, graphicsQueue, commandPool);
     vkDestroyCommandPool(device, commandPool, nullptr);
-}
-VkCommandBuffer FrameManager::beginSingleTimeCommands(VkDevice &device, VkCommandPool commandPool)
-{
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandPool = commandPool;
-    allocInfo.commandBufferCount = 1;
-
-    VkCommandBuffer commandBuffer;
-    vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
-
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-    vkBeginCommandBuffer(commandBuffer, &beginInfo);
-
-    return commandBuffer;
-}
-void FrameManager::endSingleTimeCommands(VkDevice &device, VkCommandBuffer &commandBuffer, VkQueue &graphicsQueue, VkCommandPool commandPool)
-{
-    vkEndCommandBuffer(commandBuffer);
-
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &commandBuffer;
-
-    vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
-    vkQueueWaitIdle(graphicsQueue);
-
-    vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
 }
 void FrameManager::createRenderPass(VkDevice &device)
 {

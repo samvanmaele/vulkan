@@ -1,4 +1,5 @@
 #include "vk_loadGLTF.hpp"
+#include "vk_buffers.hpp"
 #include "common.hpp"
 #include <SDL3_image/SDL_image.h>
 #include <cstddef>
@@ -35,10 +36,25 @@ VkModel::VkModel(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graph
 
     for (size_t j = 0; j < MAX_FRAMES_IN_FLIGHT; j++)
     {
-        createBuffer(physicalDevice, device, bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffers[j], uniformBuffersMemory[j]);
+        BufferManager::createBuffer(physicalDevice, device, bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, uniformBuffers[j], uniformBuffersMemory[j]);
         vkMapMemory(device, uniformBuffersMemory[j], 0, bufferSize, 0, &uniformBuffersMapped[j]);
     }
 }
+void VkModel::destroyAll(VkDevice device)
+{
+    for (PrimitiveData primitiveData : primitiveDataList)
+    {
+        primitiveData.destroyTexture(device);
+        primitiveData.destroyVertexBuffers(device);
+    }
+
+    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
+    {
+        vkDestroyBuffer(device, uniformBuffers[i], nullptr);
+        vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
+    }
+}
+
 void VkModel::bindNode(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, tinygltf::Model& model, const tinygltf::Node& node)
 {
     if (node.mesh >= 0) bindMesh(physicalDevice, device, graphicsQueue, commandPool, model, model.meshes[node.mesh]);
@@ -62,29 +78,29 @@ void VkModel::bindMesh(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue
             else if (attrib.first == "TEXCOORD_0") texAttrib = getAttrib(model, vertexCount, attrib.second, false);
         }
         primitiveData.vertexCount = vertexCount;
-        stageBuffer(physicalDevice, device, graphicsQueue, commandPool, posAttrib.dataPtr, vertexCount * posAttrib.stride, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, primitiveData.posBuffer, primitiveData.positionBufferMemory);
+        BufferManager::stageBuffer(physicalDevice, device, graphicsQueue, commandPool, posAttrib.dataPtr, vertexCount * posAttrib.stride, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, primitiveData.posBuffer, primitiveData.positionBufferMemory);
 
         if (normAttrib.dataPtr)
         {
-            stageBuffer(physicalDevice, device, graphicsQueue, commandPool, normAttrib.dataPtr, vertexCount * normAttrib.stride, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, primitiveData.normalBuffer, primitiveData.normalBufferMemory);
+            BufferManager::stageBuffer(physicalDevice, device, graphicsQueue, commandPool, normAttrib.dataPtr, vertexCount * normAttrib.stride, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, primitiveData.normalBuffer, primitiveData.normalBufferMemory);
         }
         if (texAttrib.dataPtr)
         {
-            stageBuffer(physicalDevice, device, graphicsQueue, commandPool, texAttrib.dataPtr, vertexCount * texAttrib.stride, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, primitiveData.texBuffer, primitiveData.texBufferMemory);
+            BufferManager::stageBuffer(physicalDevice, device, graphicsQueue, commandPool, texAttrib.dataPtr, vertexCount * texAttrib.stride, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, primitiveData.texBuffer, primitiveData.texBufferMemory);
         }
         if (primitive.indices >= 0)
         {
             AttribDatta indexAttrib = getAttrib(model, indexCount, primitive.indices, true);
             primitiveData.indexCount = indexCount;
             primitiveData.indexType = indexAttrib.stride == 2 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
-            stageBuffer(physicalDevice, device, graphicsQueue, commandPool, indexAttrib.dataPtr, indexAttrib.stride * indexCount, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, primitiveData.indexBuffer, primitiveData.indexBufferMemory);
+            BufferManager::stageBuffer(physicalDevice, device, graphicsQueue, commandPool, indexAttrib.dataPtr, indexAttrib.stride * indexCount, VK_BUFFER_USAGE_INDEX_BUFFER_BIT, primitiveData.indexBuffer, primitiveData.indexBufferMemory);
         }
         else
         {
             primitiveData.indexCount = vertexCount;
             std::vector<uint32_t> indices(vertexCount);
             std::iota(indices.begin(), indices.end(), 0);
-            stageBuffer(physicalDevice, device, graphicsQueue, commandPool, indices.data(), indices.size() * sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, primitiveData.indexBuffer, primitiveData.indexBufferMemory);
+            BufferManager::stageBuffer(physicalDevice, device, graphicsQueue, commandPool, indices.data(), indices.size() * sizeof(uint32_t), VK_BUFFER_USAGE_INDEX_BUFFER_BIT, primitiveData.indexBuffer, primitiveData.indexBufferMemory);
         }
 
         if (primitive.material >= 0)
@@ -120,104 +136,6 @@ AttribDatta VkModel::getAttrib(tinygltf::Model& model, size_t &vecSize, int attr
     return attrib;
 }
 
-void VkModel::stageBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, const void* srcData, size_t dataSize, VkBufferUsageFlags usage, VkBuffer &buffer, VkDeviceMemory &bufferMemory)
-{
-    VkBuffer stagingBuffer;
-    VkDeviceMemory stagingBufferMemory;
-    createBuffer(physicalDevice, device, dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
-
-    void* dstData;
-    vkMapMemory(device, stagingBufferMemory, 0, dataSize, 0, &dstData);
-    memcpy(dstData, srcData, dataSize);
-    vkUnmapMemory(device, stagingBufferMemory);
-
-    createBuffer(physicalDevice, device, dataSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, buffer, bufferMemory);
-    copyBuffer(device, graphicsQueue, commandPool, stagingBuffer, buffer, dataSize);
-
-    vkDestroyBuffer(device, stagingBuffer, nullptr);
-    vkFreeMemory(device, stagingBufferMemory, nullptr);
-}
-void VkModel::createBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer &buffer, VkDeviceMemory &bufferMemory)
-{
-    VkBufferCreateInfo bufferInfo{};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = size;
-    bufferInfo.usage = usage;
-    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-    vk_check(vkCreateBuffer(device, &bufferInfo, nullptr, &buffer), "failed to create buffer!");
-
-    VkMemoryRequirements memRequirements;
-    vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
-
-    VkMemoryAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(physicalDevice, memRequirements.memoryTypeBits, properties);
-
-    vk_check(vkAllocateMemory(device, &allocInfo, nullptr, &bufferMemory), "failed to allocate buffer memory!");
-    vkBindBufferMemory(device, buffer, bufferMemory, 0);
-}
-uint32_t VkModel::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties)
-{
-    VkPhysicalDeviceMemoryProperties memProperties;
-    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
-
-    for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++)
-    {
-        if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties)
-        {
-            return i;
-        }
-    }
-    throw std::runtime_error("failed to find suitable memory type!");
-}
-void VkModel::copyBuffer(VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
-{
-    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device, commandPool);
-
-    VkBufferCopy copyRegion{};
-    copyRegion.srcOffset = 0;
-    copyRegion.dstOffset = 0;
-    copyRegion.size = size;
-    vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
-
-    endSingleTimeCommands(device, commandBuffer, graphicsQueue, commandPool);
-}
-VkCommandBuffer VkModel::beginSingleTimeCommands(VkDevice &device, VkCommandPool commandPool)
-{
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandPool = commandPool;
-    allocInfo.commandBufferCount = 1;
-
-    VkCommandBuffer commandBuffer;
-    vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
-
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-    vkBeginCommandBuffer(commandBuffer, &beginInfo);
-
-    return commandBuffer;
-}
-void VkModel::endSingleTimeCommands(VkDevice &device, VkCommandBuffer &commandBuffer, VkQueue &graphicsQueue, VkCommandPool commandPool)
-{
-    vkEndCommandBuffer(commandBuffer);
-
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &commandBuffer;
-
-    vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
-    vkQueueWaitIdle(graphicsQueue);
-
-    vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
-}
-
 void VkModel::createTextureImage(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, VkImage &textureImage, VkDeviceMemory &textureImageMemory, const unsigned char* pixels, int texWidth, int texHeight)
 {
     VkBuffer stagingBuffer;
@@ -226,7 +144,7 @@ void VkModel::createTextureImage(VkPhysicalDevice physicalDevice, VkDevice devic
     int channels = 4;
     VkDeviceSize imageSize = texWidth * texHeight * channels;
 
-    createBuffer(physicalDevice, device, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
+    BufferManager::createBuffer(physicalDevice, device, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
 
     void* data;
     vkMapMemory(device, stagingBufferMemory, 0, imageSize, 0, &data);
@@ -235,7 +153,7 @@ void VkModel::createTextureImage(VkPhysicalDevice physicalDevice, VkDevice devic
 
     createImage(physicalDevice, device, texWidth, texHeight, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureImage, textureImageMemory);
     transitionImageLayout(device, graphicsQueue, commandPool, textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    copyBufferToImage(device, graphicsQueue, commandPool, stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+    BufferManager::copyBufferToImage(device, graphicsQueue, commandPool, stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
     transitionImageLayout(device, graphicsQueue, commandPool, textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
     vkDestroyBuffer(device, stagingBuffer, nullptr);
@@ -266,7 +184,7 @@ void VkModel::createImage(VkPhysicalDevice physicalDevice, VkDevice device, uint
     VkMemoryAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     allocInfo.allocationSize = memRequirements.size;
-    allocInfo.memoryTypeIndex = findMemoryType(physicalDevice, memRequirements.memoryTypeBits, properties);
+    allocInfo.memoryTypeIndex = BufferManager::findMemoryType(physicalDevice, memRequirements.memoryTypeBits, properties);
 
     vk_check(vkAllocateMemory(device, &allocInfo, nullptr, &imageMemory), "failed to allocate image memory!");
 
@@ -274,7 +192,7 @@ void VkModel::createImage(VkPhysicalDevice physicalDevice, VkDevice device, uint
 }
 void VkModel::transitionImageLayout(VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout)
 {
-    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device, commandPool);
+    VkCommandBuffer commandBuffer = BufferManager::beginSingleTimeCommands(device, commandPool);
 
     VkPipelineStageFlags sourceStage;
     VkPipelineStageFlags destinationStage;
@@ -334,26 +252,7 @@ void VkModel::transitionImageLayout(VkDevice device, VkQueue graphicsQueue, VkCo
     }
 
     vkCmdPipelineBarrier(commandBuffer, sourceStage, destinationStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
-    endSingleTimeCommands(device, commandBuffer, graphicsQueue, commandPool);
-}
-void VkModel::copyBufferToImage(VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, VkBuffer buffer, VkImage image, uint32_t width, uint32_t height)
-{
-    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device, commandPool);
-
-    VkBufferImageCopy region{};
-    region.bufferOffset = 0;
-    region.bufferRowLength = 0;
-    region.bufferImageHeight = 0;
-    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    region.imageSubresource.mipLevel = 0;
-    region.imageSubresource.baseArrayLayer = 0;
-    region.imageSubresource.layerCount = 1;
-    region.imageOffset = {0, 0, 0};
-    region.imageExtent = {width, height, 1};
-
-    vkCmdCopyBufferToImage(commandBuffer, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
-
-    endSingleTimeCommands(device, commandBuffer, graphicsQueue, commandPool);
+    BufferManager::endSingleTimeCommands(device, commandBuffer, graphicsQueue, commandPool);
 }
 void VkModel::createTextureImageView(VkDevice device, VkImageView &textureImageView, VkImage textureImage)
 {
@@ -369,19 +268,4 @@ void VkModel::createTextureImageView(VkDevice device, VkImageView &textureImageV
     viewInfo.subresourceRange.layerCount = 1;
 
     vk_check(vkCreateImageView(device, &viewInfo, nullptr, &textureImageView), "failed to create texture image view!");
-}
-
-void VkModel::destroyAll(VkDevice device)
-{
-    for (PrimitiveData primitiveData : primitiveDataList)
-    {
-        primitiveData.destroyTexture(device);
-        primitiveData.destroyVertexBuffers(device);
-    }
-
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-    {
-        vkDestroyBuffer(device, uniformBuffers[i], nullptr);
-        vkFreeMemory(device, uniformBuffersMemory[i], nullptr);
-    }
 }

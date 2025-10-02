@@ -30,7 +30,7 @@
 #include "vk_debug.hpp"
 #include "vk_device.hpp"
 #include "vk_frames.hpp"
-#include "vk_buffers.hpp"
+#include "vk_objects.hpp"
 #include "vk_command.hpp"
 #include "vk_sync.hpp"
 
@@ -65,6 +65,7 @@ std::vector<std::string> modelPaths
     "models/vedal987/vedal987.gltf",
     "models/vedal987/vedal987.gltf",
 };
+std::string playerModelFile = "models/vedal987/vedal987.gltf";
 
 class Player
 {
@@ -74,7 +75,7 @@ class Player
         glm::vec3 camForward = glm::vec3(0,0,1);
         glm::vec3 camRight = glm::vec3(1,0,0);
         glm::vec3 camUp = glm::vec3(0,1,0);
-        float zoom = 0.0;
+        float zoom = 5.0;
 
         glm::vec3 position = glm::vec3(0,0,0);
         glm::vec3 eulers = glm::vec3(0,0,0);
@@ -167,10 +168,10 @@ class VulkanEngine
                 return false;
             }
 
-            bufferManager.init(deviceManager.physicalDevice, deviceManager.device, deviceManager.indices, deviceManager.graphicsQueue, modelPaths);
-            frameManager.init(deviceManager.physicalDevice, deviceManager.device, window, deviceManager.surface, deviceManager.indices, deviceManager.graphicsQueue, deviceManager.swapChainSupport, bufferManager.descriptorSetLayouts);
+            objectManager.init(deviceManager.physicalDevice, deviceManager.device, deviceManager.indices, deviceManager.graphicsQueue, modelPaths, playerModelFile);
+            frameManager.init(deviceManager.physicalDevice, deviceManager.device, window, deviceManager.surface, deviceManager.indices, deviceManager.graphicsQueue, deviceManager.swapChainSupport, objectManager.descriptorSetLayouts);
 
-            commandManager.init(deviceManager.device, deviceManager.indices.graphicsFamily.value(), frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.renderPass, bufferManager.descriptorSets, bufferManager.models);
+            commandManager.init(deviceManager.device, deviceManager.indices.graphicsFamily.value(), frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.renderPass, objectManager.descriptorSets, objectManager.models, objectManager.player);
             syncManager.createSyncObjects(deviceManager.device);
 
             createRenderthread();
@@ -185,7 +186,7 @@ class VulkanEngine
         DebugManager debugManager;
         DeviceManager deviceManager;
         FrameManager frameManager;
-        BufferManager bufferManager;
+        ObjectManager objectManager;
         CommandManager commandManager;
         SyncManager syncManager;
 
@@ -193,6 +194,9 @@ class VulkanEngine
         {
             SDL_Init(SDL_INIT_VIDEO);
             window = SDL_CreateWindow("...", WIDTH, HEIGHT, SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN);
+            //SDL_CaptureMouse(true);
+            //SDL_HideCursor();
+            SDL_SetWindowRelativeMouseMode(window, true);
         }
         void recreateSwapChain()
         {
@@ -202,7 +206,7 @@ class VulkanEngine
             frameManager.reinit(deviceManager.physicalDevice, deviceManager.device, window, deviceManager.surface, deviceManager.indices, deviceManager.graphicsQueue, deviceManager.swapChainSupport);
 
             vkFreeCommandBuffers(deviceManager.device, commandManager.commandPool, static_cast<uint32_t>(commandManager.commandBuffers.size()), commandManager.commandBuffers.data());
-            commandManager.createCommandBuffers(deviceManager.device, frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.renderPass, bufferManager.descriptorSets, bufferManager.models);
+            commandManager.createCommandBuffers(deviceManager.device, frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.renderPass, objectManager.descriptorSets, objectManager.models, objectManager.player);
         }
 
         std::atomic<bool> running = true;
@@ -233,6 +237,7 @@ class VulkanEngine
         AtomicMat4 view;
 
         Player player;
+        GlModel playermodel;
 
         void mainLoop()
         {
@@ -288,12 +293,12 @@ class VulkanEngine
                     view.store(tempView);
                 }
 
-                for (int i = 0; i < bufferManager.models.size(); i++)
+                for (int i = 0; i < objectManager.models.size(); i++)
                 {
-                    bufferManager.models[i].transmat = glm::rotate(glm::mat4(1.0f), 0.001f * time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-                    bufferManager.models[i].transmat[3][2] -= 5;
-                    bufferManager.models[i].transmat[3][0] += ((i % 5) - 2.0) * 1.3;
-                    bufferManager.models[i].transmat[3][1] += int(i/5) * 1.3;
+                    objectManager.models[i].transmat = glm::rotate(glm::mat4(1.0f), 0.001f * time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+                    objectManager.models[i].transmat[3][2] -= 5;
+                    objectManager.models[i].transmat[3][0] += ((i % 5) - 2.0) * 1.3;
+                    objectManager.models[i].transmat[3][1] += int(i/5) * 1.3;
                 }
 
                 if (frametime >= 1000)
@@ -355,6 +360,7 @@ class VulkanEngine
             {
                 setThreadAffinityAndPriority();
                 glm::mat4 cachedView;
+                int updateView;
 
                 while (running)
                 {
@@ -368,10 +374,19 @@ class VulkanEngine
                     if (updateCam.exchange(false))
                     {
                         cachedView = view.load();
+                        updateView = MAX_FRAMES_IN_FLIGHT;
                     }
-                    bufferManager.updateView(currentFrame, cachedView);
+                    if (updateView)
+                    {
+                        objectManager.updateView(currentFrame, cachedView);
+                        updateView--;
+                    }
 
-                    bufferManager.updateUniformBuffer(currentFrame);
+                    objectManager.player.transmat = glm::rotate(glm::mat4(1.0f), 0.001f * time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+                    objectManager.player.transmat[3][0] = player.position.x;
+                    objectManager.player.transmat[3][1] = player.position.y;
+                    objectManager.player.transmat[3][2] = player.position.z;
+                    objectManager.updateUniformBuffer(currentFrame);
                     submitQueue();
                     presentImg();
 
@@ -424,7 +439,7 @@ class VulkanEngine
             syncManager.cleanupSyncObjects(deviceManager.device);
             frameManager.cleanupSwapChain(deviceManager.device);
             frameManager.cleanupPipeline(deviceManager.device);
-            bufferManager.destroyAll(deviceManager.device);
+            objectManager.destroyAll(deviceManager.device);
 
             vkDestroyCommandPool(deviceManager.device, commandManager.commandPool, nullptr);
             vkDestroyDevice(deviceManager.device, nullptr);
@@ -472,6 +487,7 @@ class OpenGLEngine
             SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
 
             window = SDL_CreateWindow("...", WIDTH, HEIGHT, SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
+            SDL_SetWindowRelativeMouseMode(window, true);
         }
 
         std::atomic<bool> running = true;
@@ -505,6 +521,7 @@ class OpenGLEngine
         GLint modelpos;
 
         Player player;
+        GlModel playermodel;
         std::vector<GlModel> models;
 
         void mainLoop()
@@ -622,6 +639,7 @@ class OpenGLEngine
                 {
                     models.emplace_back(filename.c_str());
                 }
+                playermodel = GlModel(playerModelFile.c_str());
 
                 while (running)
                 {
@@ -635,8 +653,12 @@ class OpenGLEngine
                         glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), &mat);
                     }
 
-                    //glUniformMatrix4fv(modelpos, 1, GL_FALSE, &playobj.object.transmat[0][0]);
-                    //player.model.drawModel();
+                    playermodel.transmat = glm::rotate(glm::mat4(1.0f), 0.001f * time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+                    playermodel.transmat[3][0] = player.position.x;
+                    playermodel.transmat[3][1] = player.position.y;
+                    playermodel.transmat[3][2] = player.position.z;
+                    glUniformMatrix4fv(modelpos, 1, GL_FALSE, &playermodel.transmat[0][0]);
+                    playermodel.drawModel();
 
                     for (GlModel &model : models)
                     {

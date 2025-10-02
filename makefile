@@ -31,7 +31,7 @@ else
     LDFLAGS  = -fuse-ld=lld -static-libstdc++ -static-libgcc -lSDL3 -lSDL3_image -lGL -lGLU -lGLEW -lvulkan -ldl -lpthread -lm
 endif
 
-OBJS_COMMON = main.o vk_device.o vk_frames.o vk_buffers.o vk_loadGLTF.o vk_command.o vk_sync.o volk.o common.o gl_shader.o gl_loadGLTF.o fix.o
+OBJS_COMMON = main.o vk_device.o vk_frames.o vk_objects.o vk_buffers.o vk_loadGLTF.o vk_command.o vk_sync.o volk.o common.o gl_shader.o gl_loadGLTF.o fix.o
 OBJS_DEBUG  = vk_debug.o
 
 .PHONY: all debug clean run run-debug

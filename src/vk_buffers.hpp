@@ -1,40 +1,14 @@
 #pragma once
-#include "common.hpp"
-#include "vk_loadGLTF.hpp"
+#include <volk.h>
 
 class BufferManager
 {
     public:
-        VkCommandPool commandPool;
-
-        VkSampler textureSampler;
-
-        std::vector<VkBuffer> globalUniformBuffers;
-        std::vector<VkDeviceMemory> globalUniformBuffersMemory;
-        std::vector<void*> globalUniformBuffersMapped;
-
-        VkDescriptorPool descriptorPool;
-        VkDescriptorSetLayout globalDescriptorSetLayout;
-        VkDescriptorSetLayout objectDescriptorSetLayout;
-        std::vector<VkDescriptorSet> globalDescriptorSets;
-        std::vector<VkDescriptorSet> objectDescriptorSets;
-        std::vector<VkModel> models;
-
-        std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts;
-        std::array<std::vector<VkDescriptorSet>, 2> descriptorSets;
-
-        void init(VkPhysicalDevice physicalDevice, VkDevice device, QueueFamilyIndices queueIndices, VkQueue graphicsQueue, std::vector<std::string> &modelPaths);
-        void createTextureSampler(VkPhysicalDevice physicalDevice, VkDevice device);
-        void createDescriptorSetLayout(VkDevice device);
-        void createUniformBuffers(VkPhysicalDevice physicalDevice, VkDevice device);
-        void createDescriptorPool(VkDevice device);
-        void createDescriptorSets(VkDevice device);
-        void updateView(uint32_t currentFrame, glm::mat4 view);
-        void updateUniformBuffer(uint32_t currentFrame);
-        void destroyAll(VkDevice device);
-        void destroyUniformBuffers(VkDevice device);
-
-    private:
-        void createBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
-        uint32_t findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
+        void static copyBufferToImage(VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, VkBuffer buffer, VkImage image, uint32_t width, uint32_t height);
+        void static stageBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, const void* srcData, size_t dataSize, VkBufferUsageFlags usage, VkBuffer &buffer, VkDeviceMemory &bufferMemory);
+        void static createBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);
+        uint32_t static findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, VkMemoryPropertyFlags properties);
+        void static copyBuffer(VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
+        VkCommandBuffer static beginSingleTimeCommands(VkDevice &device, VkCommandPool commandPool);
+        void static endSingleTimeCommands(VkDevice &device, VkCommandBuffer &commandBuffer, VkQueue &graphicsQueue, VkCommandPool commandPool);
 };

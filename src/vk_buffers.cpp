@@ -1,119 +1,45 @@
 #include "vk_buffers.hpp"
 #include "common.hpp"
-#include <SDL3_image/SDL_image.h>
-#include <cstdint>
 #include <cstring>
-#include <chrono>
 #include <stdexcept>
 
-void BufferManager::init(VkPhysicalDevice physicalDevice, VkDevice device, QueueFamilyIndices queueIndices, VkQueue graphicsQueue, std::vector<std::string> &modelPaths)
+void BufferManager::copyBufferToImage(VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, VkBuffer buffer, VkImage image, uint32_t width, uint32_t height)
 {
-    VkCommandPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    poolInfo.queueFamilyIndex = queueIndices.graphicsFamily.value();
-    vk_check(vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool), "failed to create command pool!");
+    VkCommandBuffer commandBuffer = BufferManager::beginSingleTimeCommands(device, commandPool);
 
-    for (const auto& filename : modelPaths)
-    {
-        models.emplace_back(physicalDevice, device, graphicsQueue, commandPool, filename.c_str());
-    }
+    VkBufferImageCopy region{};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+    region.imageOffset = {0, 0, 0};
+    region.imageExtent = {width, height, 1};
 
+    vkCmdCopyBufferToImage(commandBuffer, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
 
-    createDescriptorSetLayout(device);
-    createTextureSampler(physicalDevice, device);
-    createUniformBuffers(physicalDevice, device);
-    createDescriptorPool(device);
-    createDescriptorSets(device);
+    BufferManager::endSingleTimeCommands(device, commandBuffer, graphicsQueue, commandPool);
 }
-void BufferManager::createDescriptorSetLayout(VkDevice device)
+void BufferManager::stageBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, const void* srcData, size_t dataSize, VkBufferUsageFlags usage, VkBuffer &buffer, VkDeviceMemory &bufferMemory)
 {
-    VkDescriptorSetLayoutBinding globalUboLayoutBinding{};
-    globalUboLayoutBinding.binding = 0;
-    globalUboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    globalUboLayoutBinding.descriptorCount = 1;
-    globalUboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-    globalUboLayoutBinding.pImmutableSamplers = nullptr;
+    VkBuffer stagingBuffer;
+    VkDeviceMemory stagingBufferMemory;
+    createBuffer(physicalDevice, device, dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
 
-    VkDescriptorSetLayoutBinding samplerLayoutBinding{};
-    samplerLayoutBinding.binding = 1;
-    samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    samplerLayoutBinding.descriptorCount = static_cast<uint32_t>(models.size());
-    samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+    void* dstData;
+    vkMapMemory(device, stagingBufferMemory, 0, dataSize, 0, &dstData);
+    memcpy(dstData, srcData, dataSize);
+    vkUnmapMemory(device, stagingBufferMemory);
 
-    std::array<VkDescriptorSetLayoutBinding, 2> bindings = {globalUboLayoutBinding, samplerLayoutBinding};
+    createBuffer(physicalDevice, device, dataSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, buffer, bufferMemory);
+    copyBuffer(device, graphicsQueue, commandPool, stagingBuffer, buffer, dataSize);
 
-    std::vector<VkDescriptorBindingFlags> bindingFlags(2);
-    bindingFlags[1] = VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT_EXT | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
-
-    VkDescriptorSetLayoutBindingFlagsCreateInfoEXT bindingFlagsInfo{};
-    bindingFlagsInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT;
-    bindingFlagsInfo.bindingCount = static_cast<uint32_t>(bindings.size());
-    bindingFlagsInfo.pBindingFlags = bindingFlags.data();
-
-    VkDescriptorSetLayoutCreateInfo globalLayoutInfo{};
-    globalLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    globalLayoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
-    globalLayoutInfo.pBindings = bindings.data();
-    globalLayoutInfo.pNext = &bindingFlagsInfo;
-
-    vk_check(vkCreateDescriptorSetLayout(device, &globalLayoutInfo, nullptr, &globalDescriptorSetLayout), "failed to create descriptor set layout!");
-
-    VkDescriptorSetLayoutBinding objectUboLayoutBinding{};
-    objectUboLayoutBinding.binding = 0;
-    objectUboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    objectUboLayoutBinding.descriptorCount = 1;
-    objectUboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-    VkDescriptorSetLayoutCreateInfo objectLayoutInfo{};
-    objectLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    objectLayoutInfo.bindingCount = 1;
-    objectLayoutInfo.pBindings = &objectUboLayoutBinding;
-
-    vk_check(vkCreateDescriptorSetLayout(device, &objectLayoutInfo, nullptr, &objectDescriptorSetLayout), "failed to create object descriptor set layout!");
-
-    descriptorSetLayouts = {globalDescriptorSetLayout, objectDescriptorSetLayout};
+    vkDestroyBuffer(device, stagingBuffer, nullptr);
+    vkFreeMemory(device, stagingBufferMemory, nullptr);
 }
-void BufferManager::createTextureSampler(VkPhysicalDevice physicalDevice, VkDevice device)
-{
-    VkPhysicalDeviceProperties properties{};
-    vkGetPhysicalDeviceProperties(physicalDevice, &properties);
-
-    VkSamplerCreateInfo samplerInfo{};
-    samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-    samplerInfo.magFilter = VK_FILTER_NEAREST;
-    samplerInfo.minFilter = VK_FILTER_NEAREST;
-    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerInfo.anisotropyEnable = VK_TRUE;
-    samplerInfo.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
-    samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
-    samplerInfo.unnormalizedCoordinates = VK_FALSE;
-    samplerInfo.compareEnable = VK_FALSE;
-    samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
-    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-    samplerInfo.mipLodBias = 0.0f;
-    samplerInfo.minLod = 0.0f;
-    samplerInfo.maxLod = 0.0f;
-
-    vk_check(vkCreateSampler(device, &samplerInfo, nullptr, &textureSampler), "failed to create texture sampler!");
-}
-void BufferManager::createUniformBuffers(VkPhysicalDevice physicalDevice, VkDevice device)
-{
-    VkDeviceSize bufferSize = sizeof(GlobalUniformBufferObject);
-
-    globalUniformBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-    globalUniformBuffersMemory.resize(MAX_FRAMES_IN_FLIGHT);
-    globalUniformBuffersMapped.resize(MAX_FRAMES_IN_FLIGHT);
-
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-    {
-        createBuffer(physicalDevice, device, bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, globalUniformBuffers[i], globalUniformBuffersMemory[i]);
-        vkMapMemory(device, globalUniformBuffersMemory[i], 0, bufferSize, 0, &globalUniformBuffersMapped[i]);
-    }
-}
-void BufferManager::createBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory)
+void BufferManager::createBuffer(VkPhysicalDevice physicalDevice, VkDevice device, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer &buffer, VkDeviceMemory &bufferMemory)
 {
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -148,145 +74,48 @@ uint32_t BufferManager::findMemoryType(VkPhysicalDevice physicalDevice, uint32_t
     }
     throw std::runtime_error("failed to find suitable memory type!");
 }
-void BufferManager::createDescriptorPool(VkDevice device)
+void BufferManager::copyBuffer(VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
 {
-    std::array<VkDescriptorPoolSize, 2> poolSizes{};
-    poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT + (MAX_FRAMES_IN_FLIGHT * models.size()));
-    poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    poolSizes[1].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT * models.size());
+    VkCommandBuffer commandBuffer = beginSingleTimeCommands(device, commandPool);
 
-    VkDescriptorPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
-    poolInfo.pPoolSizes = poolSizes.data();
-    poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT + (MAX_FRAMES_IN_FLIGHT * models.size()));
+    VkBufferCopy copyRegion{};
+    copyRegion.srcOffset = 0;
+    copyRegion.dstOffset = 0;
+    copyRegion.size = size;
+    vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
 
-    vk_check(vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool), "failed to create descriptor pool!");
+    endSingleTimeCommands(device, commandBuffer, graphicsQueue, commandPool);
 }
-void BufferManager::createDescriptorSets(VkDevice device)
+VkCommandBuffer BufferManager::beginSingleTimeCommands(VkDevice &device, VkCommandPool commandPool)
 {
-    std::vector<VkDescriptorSetLayout> globalLayouts(MAX_FRAMES_IN_FLIGHT, globalDescriptorSetLayout);
-    std::vector<uint32_t> descriptorCounts(MAX_FRAMES_IN_FLIGHT, static_cast<uint32_t>(models.size()));
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandPool = commandPool;
+    allocInfo.commandBufferCount = 1;
 
-    VkDescriptorSetVariableDescriptorCountAllocateInfoEXT countInfo{};
-    countInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_VARIABLE_DESCRIPTOR_COUNT_ALLOCATE_INFO_EXT;
-    countInfo.descriptorSetCount = static_cast<uint32_t>(globalLayouts.size());
-    countInfo.pDescriptorCounts = descriptorCounts.data();
+    VkCommandBuffer commandBuffer;
+    vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
 
-    VkDescriptorSetAllocateInfo globalAllocInfo{};
-    globalAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    globalAllocInfo.descriptorPool = descriptorPool;
-    globalAllocInfo.descriptorSetCount = static_cast<uint32_t>(globalLayouts.size());
-    globalAllocInfo.pSetLayouts = globalLayouts.data();
-    globalAllocInfo.pNext = &countInfo;
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-    globalDescriptorSets.resize(MAX_FRAMES_IN_FLIGHT);
-    vk_check(vkAllocateDescriptorSets(device, &globalAllocInfo, globalDescriptorSets.data()), "failed to allocate global descriptor sets!");
+    vkBeginCommandBuffer(commandBuffer, &beginInfo);
 
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-    {
-        VkDescriptorBufferInfo globalUboInfo{};
-        globalUboInfo.buffer = globalUniformBuffers[i];
-        globalUboInfo.offset = 0;
-        globalUboInfo.range = sizeof(GlobalUniformBufferObject);
-
-        std::vector<VkDescriptorImageInfo> imageInfos(models.size());
-        for (size_t j = 0; j < models.size(); j++)
-        {
-            imageInfos[j].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-            imageInfos[j].imageView = models[j].primitiveDataList[0].textureImageView;
-            imageInfos[j].sampler = textureSampler;
-        }
-
-        std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
-
-        descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[0].dstSet = globalDescriptorSets[i];
-        descriptorWrites[0].dstBinding = 0;
-        descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        descriptorWrites[0].descriptorCount = 1;
-        descriptorWrites[0].pBufferInfo = &globalUboInfo;
-
-        descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        descriptorWrites[1].dstSet = globalDescriptorSets[i];
-        descriptorWrites[1].dstBinding = 1;
-        descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        descriptorWrites[1].descriptorCount = static_cast<uint32_t>(imageInfos.size());
-        descriptorWrites[1].pImageInfo = imageInfos.data();
-
-        vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
-    }
-
-    size_t totalObjectSets = models.size() * MAX_FRAMES_IN_FLIGHT;
-    objectDescriptorSets.resize(totalObjectSets);
-
-    std::vector<VkDescriptorSetLayout> objectLayouts(totalObjectSets, objectDescriptorSetLayout);
-
-    VkDescriptorSetAllocateInfo objectAllocInfo{};
-    objectAllocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-    objectAllocInfo.descriptorPool = descriptorPool;
-    objectAllocInfo.descriptorSetCount = static_cast<uint32_t>(totalObjectSets);
-    objectAllocInfo.pSetLayouts = objectLayouts.data();
-
-    vk_check(vkAllocateDescriptorSets(device, &objectAllocInfo, objectDescriptorSets.data()), "failed to allocate object descriptor sets!");
-
-    for (size_t i = 0; i < models.size(); i++)
-    {
-        for (size_t j = 0; j < MAX_FRAMES_IN_FLIGHT; j++)
-        {
-            VkDescriptorBufferInfo objectBufferInfo{};
-            objectBufferInfo.buffer = models[i].uniformBuffers[j];
-            objectBufferInfo.offset = 0;
-            objectBufferInfo.range = sizeof(ObjectUniformBufferObject);
-
-            VkWriteDescriptorSet write{};
-            write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-            write.dstSet = objectDescriptorSets[i * MAX_FRAMES_IN_FLIGHT + j];
-            write.dstBinding = 0;
-            write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER; write.descriptorCount = 1;
-            write.pBufferInfo = &objectBufferInfo;
-            vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
-        }
-    }
-
-    descriptorSets = {globalDescriptorSets, objectDescriptorSets};
+    return commandBuffer;
 }
-void BufferManager::updateView(uint32_t currentFrame, glm::mat4 view)
+void BufferManager::endSingleTimeCommands(VkDevice &device, VkCommandBuffer &commandBuffer, VkQueue &graphicsQueue, VkCommandPool commandPool)
 {
-    GlobalUniformBufferObject ubo{};
-    ubo.view = view;
-    ubo.proj = glm::perspective(glm::radians(45.0f), (float) WIDTH / (float) HEIGHT, 0.1f, 50.0f);
-    ubo.proj[1][1] *= -1;
-    memcpy(globalUniformBuffersMapped[currentFrame], &ubo, sizeof(ubo));
-}
-void BufferManager::updateUniformBuffer(uint32_t currentFrame)
-{
-    for (VkModel model : models)
-    {
-        memcpy(model.uniformBuffersMapped[currentFrame], &model.transmat, sizeof(glm::mat4));
-    }
-}
+    vkEndCommandBuffer(commandBuffer);
 
-void BufferManager::destroyAll(VkDevice device)
-{
-    vkDestroySampler(device, textureSampler, nullptr);
-    destroyUniformBuffers(device);
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffer;
 
-    for (auto& model : models)
-    {
-        model.destroyAll(device);
-    }
-    vkDestroyCommandPool(device, commandPool, nullptr);
-}
-void BufferManager::destroyUniformBuffers(VkDevice device)
-{
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
-    {
-        vkDestroyBuffer(device, globalUniformBuffers[i], nullptr);
-        vkFreeMemory(device, globalUniformBuffersMemory[i], nullptr);
-    }
-    vkDestroyDescriptorPool(device, descriptorPool, nullptr);
-    vkDestroyDescriptorSetLayout(device, globalDescriptorSetLayout, nullptr);
-    vkDestroyDescriptorSetLayout(device, objectDescriptorSetLayout, nullptr);
+    vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(graphicsQueue);
+
+    vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
 }
