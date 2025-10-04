@@ -3,9 +3,9 @@ OUTPUT       = output/release
 OUTPUT_DEBUG = output/debug
 OUTPUT_WEB   = output/web
 
-CXXFLAGS_COMMON = -O3 -std=c++23 -Wall -DNDEBUG -I./src -I./shaders -DSDL_MAIN_HANDLED -march=native -flto -fomit-frame-pointer -fno-rtti -ffast-math
+CXXFLAGS_COMMON = -O3 -std=c++23 -Wall -DNDEBUG -I./src -I./src/vulkan -I./src/openGL -I./shaders -DSDL_MAIN_HANDLED -march=native -flto -fomit-frame-pointer -fno-rtti -ffast-math
 CXXFLAGS_COMMON_VOLK = -O3 -Wall -march=native -flto -fomit-frame-pointer
-CXXFLAGS_COMMON_DEBUG   = -O0 -g3 -Wall -I./src -I./shaders -DSDL_MAIN_HANDLED -std=c++23
+CXXFLAGS_COMMON_DEBUG = -O0 -g3 -Wall -I./src -I./src/vulkan -I./src/openGL -I./shaders -DSDL_MAIN_HANDLED -std=c++23
 
 ifeq ($(OS),Windows_NT)
 	# windows
@@ -31,8 +31,9 @@ else
     LDFLAGS  = -fuse-ld=lld -static-libstdc++ -static-libgcc -lSDL3 -lSDL3_image -lGL -lGLU -lGLEW -lvulkan -ldl -lpthread -lm
 endif
 
-OBJS_COMMON = main.o vk_device.o vk_frames.o vk_objects.o vk_buffers.o vk_loadGLTF.o vk_command.o vk_sync.o volk.o common.o gl_shader.o gl_loadGLTF.o fix.o
-OBJS_DEBUG  = vk_debug.o
+SRCS := $(shell find src -type f -name '*.cpp')
+OBJS_COMMON := $(patsubst src/%.cpp, %.o, $(SRCS)) volk.o
+OBJS_DEBUG := vulkan/vk_debug.o
 
 .PHONY: all debug clean run run-debug
 all: $(TARGET)
@@ -42,19 +43,21 @@ emcc: $(OUTPUT_WEB)/main.html
 $(TARGET): $(addprefix $(OUTPUT)/,$(OBJS_COMMON))
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
-$(OUTPUT)/%.o: src/%.cpp | $(OUTPUT)
+$(OUTPUT)/%.o: src/%.cpp
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 $(TARGET_DEBUG): $(addprefix $(OUTPUT_DEBUG)/,$(OBJS_COMMON) $(OBJS_DEBUG))
 	$(CXX) $(CXXFLAGS_DEBUG) -o $@ $^ $(LDFLAGS)
 
-$(OUTPUT_DEBUG)/%.o: src/%.cpp | $(OUTPUT_DEBUG)
+$(OUTPUT_DEBUG)/%.o: src/%.cpp
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS_DEBUG) -c $< -o $@
 
-$(OUTPUT)/volk.o: src/volk.c
+$(OUTPUT)/volk.o: src/vulkan/volk.c
 	$(CXX) -x c $(CXXFLAGS_VOLK) -c $< -o $@
 
-$(OUTPUT_DEBUG)/volk.o: src/volk.c
+$(OUTPUT_DEBUG)/volk.o: src/vulkan/volk.c
 	$(CXX) -x c $(CXXFLAGS_VOLK) -c $< -o $@
 
 $(OUTPUT) $(OUTPUT_DEBUG) $(OUTPUT_WEB):
