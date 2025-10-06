@@ -1,3 +1,4 @@
+#include <SDL3/SDL_events.h>
 #include <glm/ext/matrix_float4x4.hpp>
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
@@ -37,9 +38,10 @@
 #include "openGL/gl_shader.hpp"
 #include "openGL/gl_loadGLTF.hpp"
 
-const bool forceOpenGL = false;
+const bool forceOpenGL = true;
+const bool EAT_MOUSE = false;
 
-const int targetFPS = 60;
+const int targetFPS = 180;
 const int frameDelay = 1000 / targetFPS;
 
 std::vector<std::string> modelPaths
@@ -77,6 +79,10 @@ class Player
         glm::vec3 camUp = glm::vec3(0,1,0);
         float zoom = 5.0;
 
+        std::atomic<float> dot1;
+        std::atomic<float> dot2;
+        std::atomic<float> dot3;
+
         glm::vec3 position = glm::vec3(0,0,0);
         glm::vec3 eulers = glm::vec3(0,0,0);
         glm::vec3 forward = glm::vec3(0,0,1);
@@ -94,38 +100,39 @@ class Player
             camUp      = glm::vec3(-cosX*sinY, cosY, sinX*sinY );
 
             forward = glm::vec3(cosX,  0, -sinX);
-            right   = glm::vec3(-sinX, 0, -cosX);
+            right   = glm::vec3(sinX, 0, cosX);
 
             if (moveX || moveY)
             {
-                glm::vec3 movement = glm::normalize(forward * moveY - right * moveX);
+                glm::vec3 movement = glm::normalize(forward * moveY + right * moveX);
                 //movement = checkCollision(movement) * deltaTime * 0.02f;
+                movement = movement * deltaTime * 0.02f;
                 position += movement;
-                //makeTransmat();
             }
 
             camPosition = position - camForward * zoom;
 
-            glm::mat4 view;
+            glm::mat4 view = glm::mat4(1.0);
             view[0][0] = camRight.x;
             view[1][0] = camRight.y;
             view[2][0] = camRight.z;
-            view[3][0] = -glm::dot(camRight, camPosition);
 
             view[0][1] = camUp.x;
             view[1][1] = camUp.y;
             view[2][1] = camUp.z;
-            view[3][1] = -glm::dot(camUp, camPosition);
 
             view[0][2] = -camForward.x;
             view[1][2] = -camForward.y;
             view[2][2] = -camForward.z;
-            view[3][2] = glm::dot(camForward, camPosition);
 
             view[0][3] = 0.0f;
             view[1][3] = 0.0f;
             view[2][3] = 0.0f;
             view[3][3] = 1.0f;
+
+            dot1 = -glm::dot(camRight, camPosition);
+            dot2 = -glm::dot(camUp, camPosition);
+            dot3 = glm::dot(camForward, camPosition);
 
             return view;
         }
@@ -136,22 +143,6 @@ class EngineBase
     protected:
         SDL_Window* window;
         Player player;
-        struct AtomicMat4
-        {
-            glm::mat4 buffers[2];
-            std::atomic<int> current{0};
-            void store(const glm::mat4& newMat)
-            {
-                int next = 1 - current.load(std::memory_order_relaxed);
-                buffers[next] = newMat;
-                current.store(next, std::memory_order_release);
-            }
-            glm::mat4 load() const
-            {
-                int idx = current.load(std::memory_order_acquire);
-                return buffers[idx];
-            }
-        } view;
 
         std::atomic<bool> running = true;
         std::atomic<bool> resized = false;
@@ -161,9 +152,11 @@ class EngineBase
         std::atomic<uint32_t> time;
 
         std::array<bool, SDL_SCANCODE_COUNT> keys{};
+        std::atomic<glm::vec2> moveInput;
 
         uint32_t startTime = SDL_GetTicks();
         uint32_t lastTime = SDL_GetTicks();
+        uint32_t lastUpdateTime = SDL_GetTicks();
         char titleBuffer[64];
 
         void setThreadAffinityAndPriority(const int core_id)
@@ -203,6 +196,10 @@ class EngineBase
                         player.camEulers.x -= event.motion.xrel * 0.001;
                         updateCam = true;
                         break;
+                    case SDL_EVENT_MOUSE_WHEEL:
+                        player.zoom -= event.wheel.y;
+                        updateCam = true;
+                        break;
                     case SDL_EVENT_KEY_DOWN:
                         keys[event.key.scancode] = true;
                         break;
@@ -214,7 +211,7 @@ class EngineBase
         }
         void inputs()
         {
-            glm::vec2 input{0.0f, 0.0f};
+            glm::vec2 input{0.0, 0.0};
             if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP])    input.y += 1.0f;
             if (keys[SDL_SCANCODE_S] || keys[SDL_SCANCODE_DOWN])  input.y -= 1.0f;
             if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT])  input.x -= 1.0f;
@@ -222,9 +219,8 @@ class EngineBase
 
             if (updateCam || input.x != 0.0f || input.y != 0.0f)
             {
+                moveInput.store(input);
                 updateCam.store(true, std::memory_order_release);
-                glm::mat4 tempView = player.update(input.x, input.y, frametime);
-                view.store(tempView);
             }
         }
         void calculateFramerate()
@@ -232,15 +228,17 @@ class EngineBase
             uint32_t currentTime = SDL_GetTicks();
             frametime = currentTime - lastTime;
             time = currentTime - startTime;
+            lastTime = currentTime;
 
-            if (frametime >= 1000)
+            uint32_t frameUpdateTime = currentTime - lastUpdateTime;
+            if (frameUpdateTime >= 1000)
             {
-                float fps = 1000.0f * (float)frameCount / (float)frametime;
+                float fps = 1000.0f * (float)frameCount / (float)frameUpdateTime;
 
                 std::snprintf(titleBuffer, 64, "FPS: %f", fps);
                 SDL_SetWindowTitle(window, titleBuffer);
-                lastTime = currentTime;
-                frameCount = 0u;
+                lastUpdateTime = currentTime;
+                frameCount = 0;
             }
         }
 };
@@ -287,7 +285,8 @@ class VulkanEngine: EngineBase
         {
             SDL_Init(SDL_INIT_VIDEO);
             window = SDL_CreateWindow("...", WIDTH, HEIGHT, SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN);
-            SDL_SetWindowRelativeMouseMode(window, true);
+
+            if (EAT_MOUSE) SDL_SetWindowRelativeMouseMode(window, true);
         }
         void recreateSwapChain()
         {
@@ -383,7 +382,7 @@ class VulkanEngine: EngineBase
 
                     if (updateCam.exchange(false))
                     {
-                        cachedView = view.load();
+                        //cachedView = view.load();
                         updateView = MAX_FRAMES_IN_FLIGHT;
                     }
                     if (updateView)
@@ -494,13 +493,18 @@ class OpenGLEngine: EngineBase
             SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
 
             window = SDL_CreateWindow("...", WIDTH, HEIGHT, SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
-            SDL_SetWindowRelativeMouseMode(window, true);
+
+            if (EAT_MOUSE) SDL_SetWindowRelativeMouseMode(window, true);
         }
 
         std::thread renderThread;
 
-        GLuint viewpos;
-        GLint modelpos;
+        GLuint projPos;
+        GLuint viewPos;
+        GLuint viewNoTransPos;
+        GLuint modelPos;
+
+        GLuint vaoSkybox;
 
         GlModel playermodel;
         std::vector<GlModel> models;
@@ -525,10 +529,6 @@ class OpenGLEngine: EngineBase
                     models[i].transmat[3][0] += ((i % 5) - 2.0) * 1.3;
                     models[i].transmat[3][1] += int(i/5) * 1.3;
                 }
-                playermodel.transmat = glm::rotate(glm::mat4(1.0f), 0.001f * time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-                playermodel.transmat[3][0] = player.position.x;
-                playermodel.transmat[3][1] = player.position.y;
-                playermodel.transmat[3][2] = player.position.z;
 
                 calculateFramerate();
                 SDL_Delay(frameDelay);
@@ -540,31 +540,18 @@ class OpenGLEngine: EngineBase
             renderThread = std::thread([this]()
             {
                 setThreadAffinityAndPriority(1);
+                createOpenglContext();
 
-                SDL_GL_CreateContext(window);
+                int shaderProgram = makeShader("shaders/openGL/shader3D.vs", "shaders/openGL/shader3D.fs");
+                int shaderSkybox = makeShader("shaders/openGL/shaderSkybox.vs", "shaders/openGL/shaderSkybox.fs");
 
-                glewExperimental = GL_TRUE;
-                if (glewInit() != GLEW_OK)
-                {
-                    std::cerr << "Failed to initialize GLEW\n";
-                    return;
-                }
+                int shaders[2] = {shaderProgram, shaderSkybox};
+                updateUniformBuffer(shaders);
 
-                SDL_GL_SetSwapInterval(0);
-                glEnable(GL_DEPTH_TEST);
-                glDepthFunc(GL_LEQUAL);
-                glEnable(GL_BLEND);
-                glEnable(GL_CULL_FACE);
-                glCullFace(GL_BACK);
-                glFrontFace(GL_CCW);
-                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-                glViewport(0, 0, WIDTH, HEIGHT);
-                glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-                SDL_GL_SwapWindow(window);
+                glUseProgram(shaderSkybox);
+                setSkyboxShader(shaderSkybox);
 
-                unsigned int shaderProgram = makeShader("shaders/openGL/shader3D.vs", "shaders/openGL/shader3D.fs");
-                updateUniformBuffer(shaderProgram);
-
+                glUseProgram(shaderProgram);
                 for (const auto& filename : modelPaths)
                 {
                     models.emplace_back(filename.c_str());
@@ -578,24 +565,37 @@ class OpenGLEngine: EngineBase
 
                     if (updateCam.exchange(false))
                     {
-                        glm::mat4 mat = view.load();
-                        glBindBuffer(GL_UNIFORM_BUFFER, viewpos);
-                        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), &mat);
+                        glm::vec2 input = moveInput.load();
+                        glm::mat4 viewmat = player.update(input.x, input.y, frametime);
+
+                        glBindBuffer(GL_UNIFORM_BUFFER, viewNoTransPos);
+                        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), &viewmat);
+
+                        viewmat[3][0] = player.dot1;
+                        viewmat[3][1] = player.dot2;
+                        viewmat[3][2] = player.dot3;
+                        glBindBuffer(GL_UNIFORM_BUFFER, viewPos);
+                        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), &viewmat);
                     }
 
-                    glUniformMatrix4fv(modelpos, 1, GL_FALSE, &playermodel.transmat[0][0]);
+                    playermodel.transmat = glm::rotate(glm::mat4(1.0f), 0.001f * time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+                    playermodel.transmat[3][0] = player.position.x;
+                    playermodel.transmat[3][1] = player.position.y;
+                    playermodel.transmat[3][2] = player.position.z;
+                    glUniformMatrix4fv(modelPos, 1, GL_FALSE, &playermodel.transmat[0][0]);
                     playermodel.drawModel();
 
                     for (GlModel &model : models)
                     {
-                        glUniformMatrix4fv(modelpos, 1, GL_FALSE, &model.transmat[0][0]);
+                        glUniformMatrix4fv(modelPos, 1, GL_FALSE, &model.transmat[0][0]);
                         model.drawModel();
                     }
 
                     glDisable(GL_CULL_FACE);
 
-                    //glUseProgram(shaderSkybox);
-                    //glDrawArrays(GL_TRIANGLES, 0, 36);
+                    glUseProgram(shaderSkybox);
+                    glBindVertexArray(vaoSkybox);
+                    glDrawArrays(GL_TRIANGLES, 0, 36);
                     //drawGrass();
                     //glUseProgram(shaderBoundingbox);
                     //glDrawArrays(GL_TRIANGLES, 0, 36);
@@ -607,63 +607,161 @@ class OpenGLEngine: EngineBase
                 }
             });
         }
-        void updateUniformBuffer(int shader)
+        void createOpenglContext()
         {
-            glm::vec3 position = glm::vec3(0,5.5,3);
-            glm::vec3 eulers = glm::vec3(3.1415/2,-3.1415/8,0);
+            SDL_GL_CreateContext(window);
 
-            float cosX = std::cos(eulers.x);
-            float sinX = std::sin(eulers.x);
-            float cosY = std::cos(eulers.y);
-            float sinY = std::sin(eulers.y);
+            glewExperimental = GL_TRUE;
+            if (glewInit() != GLEW_OK)
+            {
+                std::cerr << "Failed to initialize GLEW\n";
+                return;
+            }
 
-            glm::vec3 forward = glm::vec3(cosX*cosY, sinY, -sinX*cosY);
-            glm::vec3 right = glm::vec3(sinX, 0, cosX);
-            glm::vec3 up = glm::vec3(-cosX*sinY, cosY, sinX*sinY);
-
-            glm::mat4 view;
-            view[0][0] = right.x;
-            view[1][0] = right.y;
-            view[2][0] = right.z;
-            view[3][0] = -glm::dot(right, position);
-
-            view[0][1] = up.x;
-            view[1][1] = up.y;
-            view[2][1] = up.z;
-            view[3][1] = -glm::dot(up, position);
-
-            view[0][2] = -forward.x;
-            view[1][2] = -forward.y;
-            view[2][2] = -forward.z;
-            view[3][2] = glm::dot(forward, position);
-
-            view[0][3] = 0.0f;
-            view[1][3] = 0.0f;
-            view[2][3] = 0.0f;
-            view[3][3] = 1.0f;
-
+            SDL_GL_SetSwapInterval(0);
+            glEnable(GL_DEPTH_TEST);
+            glDepthFunc(GL_LEQUAL);
+            glEnable(GL_BLEND);
+            glEnable(GL_CULL_FACE);
+            glCullFace(GL_BACK);
+            glFrontFace(GL_CCW);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glEnable(GL_FRAMEBUFFER_SRGB);
+            glViewport(0, 0, WIDTH, HEIGHT);
+            glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+            SDL_GL_SwapWindow(window);
+        }
+        void updateUniformBuffer(int shaders[])
+        {
             glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float) WIDTH / (float) HEIGHT, 0.1f, 50.0f);
+            glm::mat4 view = glm::lookAt(glm::vec3(0.0f, 0.0f, 3.0f), glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+            glm::mat4 viewNoTrans = glm::lookAt(glm::vec3(0.0f, 0.0f, 3.0f), glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
-            GLuint uboProjection;
-
-            glGenBuffers(1, &uboProjection);
-            glBindBuffer(GL_UNIFORM_BUFFER, uboProjection);
+            glGenBuffers(1, &projPos);
+            glBindBuffer(GL_UNIFORM_BUFFER, projPos);
             glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), &proj, GL_STATIC_DRAW);
-            glGenBuffers(1, &viewpos);
-            glBindBuffer(GL_UNIFORM_BUFFER, viewpos);
+            glGenBuffers(1, &viewPos);
+            glBindBuffer(GL_UNIFORM_BUFFER, viewPos);
             glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), &view, GL_DYNAMIC_DRAW);
+            glGenBuffers(1, &viewNoTransPos);
+            glBindBuffer(GL_UNIFORM_BUFFER, viewNoTransPos);
+            glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), &viewNoTrans, GL_DYNAMIC_DRAW);
 
             GLuint blockIndex;
+            for (int i = 0; i < 2; i++)
+            {
+                int shader = shaders[i];
+                blockIndex = glGetUniformBlockIndex(shader, "PROJ");
+                glUniformBlockBinding(shader, blockIndex, 0);
+                glBindBufferBase(GL_UNIFORM_BUFFER, 0, projPos);
+            }
 
-            blockIndex = glGetUniformBlockIndex(shader, "PROJ");
-            glUniformBlockBinding(shader, blockIndex, 0);
-            glBindBufferBase(GL_UNIFORM_BUFFER, blockIndex, uboProjection);
+            blockIndex = glGetUniformBlockIndex(shaders[0], "VIEW");
+            glUniformBlockBinding(shaders[0], blockIndex, 1);
+            glBindBufferBase(GL_UNIFORM_BUFFER, 1, viewPos);
 
-            blockIndex = glGetUniformBlockIndex(shader, "VIEW");
-            glUniformBlockBinding(shader, blockIndex, 1);
-            glBindBufferBase(GL_UNIFORM_BUFFER, blockIndex, viewpos);
+            blockIndex = glGetUniformBlockIndex(shaders[1], "VIEWNOTRANS");
+            glUniformBlockBinding(shaders[1], blockIndex, 2);
+            glBindBufferBase(GL_UNIFORM_BUFFER, 2, viewNoTransPos);
 
-            modelpos = glGetUniformLocation(shader, "model");
+            modelPos = glGetUniformLocation(shaders[0], "model");
+        }
+        void setSkyboxShader(int shader)
+        {
+            static const float skyboxVertices[]
+            {
+                -1.0f,  1.0f, -1.0f,
+                -1.0f, -1.0f, -1.0f,
+                1.0f, -1.0f, -1.0f,
+                1.0f, -1.0f, -1.0f,
+                1.0f,  1.0f, -1.0f,
+                -1.0f,  1.0f, -1.0f,
+
+                -1.0f, -1.0f,  1.0f,
+                -1.0f, -1.0f, -1.0f,
+                -1.0f,  1.0f, -1.0f,
+                -1.0f,  1.0f, -1.0f,
+                -1.0f,  1.0f,  1.0f,
+                -1.0f, -1.0f,  1.0f,
+
+                1.0f, -1.0f, -1.0f,
+                1.0f, -1.0f,  1.0f,
+                1.0f,  1.0f,  1.0f,
+                1.0f,  1.0f,  1.0f,
+                1.0f,  1.0f, -1.0f,
+                1.0f, -1.0f, -1.0f,
+
+                -1.0f, -1.0f,  1.0f,
+                -1.0f,  1.0f,  1.0f,
+                1.0f,  1.0f,  1.0f,
+                1.0f,  1.0f,  1.0f,
+                1.0f, -1.0f,  1.0f,
+                -1.0f, -1.0f,  1.0f,
+
+                -1.0f,  1.0f, -1.0f,
+                1.0f,  1.0f, -1.0f,
+                1.0f,  1.0f,  1.0f,
+                1.0f,  1.0f,  1.0f,
+                -1.0f,  1.0f,  1.0f,
+                -1.0f,  1.0f, -1.0f,
+
+                -1.0f, -1.0f, -1.0f,
+                -1.0f, -1.0f,  1.0f,
+                1.0f, -1.0f, -1.0f,
+                1.0f, -1.0f, -1.0f,
+                -1.0f, -1.0f,  1.0f,
+                1.0f, -1.0f,  1.0f
+            };
+
+            glGenVertexArrays(1, &vaoSkybox);
+            glBindVertexArray(vaoSkybox);
+
+            GLuint vboSkybox;
+            glGenBuffers(1, &vboSkybox);
+            glBindBuffer(GL_ARRAY_BUFFER, vboSkybox);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(skyboxVertices), skyboxVertices, GL_STATIC_DRAW);
+
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+            glBindVertexArray(0);
+
+            std::array<const char*, 6> faces =
+            {
+                "gfx/skybox/skybox_right.png",
+                "gfx/skybox/skybox_left.png",
+                "gfx/skybox/skybox_top.png",
+                "gfx/skybox/skybox_bottom.png",
+                "gfx/skybox/skybox_front.png",
+                "gfx/skybox/skybox_back.png"
+            };
+            GLuint tex = makeTex3D(faces);
+            useTex(tex, GL_TEXTURE0);
+        }
+        GLuint makeTex3D(const std::array<const char*, 6>& filepath)
+        {
+            GLuint texture;
+            glGenTextures(1, &texture);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, texture);
+
+            for (unsigned int i = 0; i < 6; ++i)
+            {
+                SDL_Surface *image = IMG_Load(filepath[i]);
+                glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, GL_SRGB8_ALPHA8, image->w, image->h, 0, GL_RGBA, GL_UNSIGNED_BYTE, image->pixels);
+                SDL_DestroySurface(image);
+            }
+
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+            return texture;
+        }
+        void useTex(const GLuint texture, const GLenum unit)
+        {
+            glActiveTexture(unit);
+            glBindTexture(GL_TEXTURE_2D, texture);
         }
 };
 

@@ -1,10 +1,10 @@
 #version 300 es
 precision highp float;
 
-in vec2 TexCoords;
 in vec3 fragPos;
 in vec3 fragNorm;
-
+in vec2 TexCoords;
+/*
 layout (std140) uniform lighting
 {
     vec4 lightcolor;
@@ -14,11 +14,11 @@ layout (std140) uniform cam
 {
     vec3 campos;
 };
-
+*/
 uniform sampler2D material;
 
-layout (location = 0) out vec4 color;
-
+layout (location = 0) out vec4 colour;
+/*
 vec3 calcPointlight(vec3 baseTexture)
 {
     vec3 result = vec3(0);
@@ -39,12 +39,20 @@ vec3 calcPointlight(vec3 baseTexture)
 
     return result;
 }
+*/
+vec3 calcPointlight(vec3 colour)
+{
+    float dotfrag = dot(fragNorm, vec3(0.0, 0.0, 1.0));
+    vec3 result = max(0.0, dotfrag) * colour;
 
+    return result;
+}
 void main()
 {
     vec4 baseTex = texture(material, TexCoords);
-    vec3 temp = 0.2 * baseTex.rgb;
-    temp += calcPointlight(baseTex.rgb);
+    //vec3 temp = 0.2 * baseTex.rgb;
+    //temp += calcPointlight(baseTex.rgb);
 
-    color = pow(vec4(temp, baseTex.a), vec4(0.45));
+    //colour = vec4(temp, baseTex.a);
+    colour = vec4(calcPointlight(baseTex.rgb), 1.0);
 }

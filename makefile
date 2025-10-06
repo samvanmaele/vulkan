@@ -3,9 +3,9 @@ OUTPUT       = output/release
 OUTPUT_DEBUG = output/debug
 OUTPUT_WEB   = output/web
 
-CXXFLAGS_COMMON = -O3 -std=c++23 -Wall -DNDEBUG -I./src -I./src/vulkan -I./src/openGL -I./shaders -DSDL_MAIN_HANDLED -march=native -flto -fomit-frame-pointer -fno-rtti -ffast-math
+CXXFLAGS_COMMON = -O3 -std=c++23 -Wall -DNDEBUG -I./src -I./src/vulkan -I./src/openGL -I./shaders -I./gfx -DSDL_MAIN_HANDLED -march=native -flto -fomit-frame-pointer -fno-rtti -ffast-math
 CXXFLAGS_COMMON_VOLK = -O3 -Wall -march=native -flto -fomit-frame-pointer
-CXXFLAGS_COMMON_DEBUG = -O0 -g3 -Wall -I./src -I./src/vulkan -I./src/openGL -I./shaders -DSDL_MAIN_HANDLED -std=c++23
+CXXFLAGS_COMMON_DEBUG = -O0 -g3 -Wall -I./src -I./src/vulkan -I./src/openGL -I./shaders -I./gfx -DSDL_MAIN_HANDLED -std=c++23
 
 ifeq ($(OS),Windows_NT)
 	# windows

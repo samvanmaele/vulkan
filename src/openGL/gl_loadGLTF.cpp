@@ -102,12 +102,11 @@ void GlModel::bindMesh(tinygltf::Model& model, tinygltf::Mesh& mesh)
 }
 void GlModel::bindAttrib(tinygltf::Model& model, int binding, int vecSize, int attribPos, bool collision)
 {
-    GLuint vbo;
-
     const auto& accessor = model.accessors[attribPos];
     const auto& bufferView = model.bufferViews[accessor.bufferView];
     const auto& buffer = model.buffers[bufferView.buffer];
 
+    GLuint vbo;
     glGenBuffers(1, &vbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
     glBufferData(GL_ARRAY_BUFFER, bufferView.byteLength, buffer.data.data() + bufferView.byteOffset, GL_STATIC_DRAW);
@@ -139,7 +138,7 @@ void GlModel::createTexture(const tinygltf::Model& model, int index)
     GLuint tex;
     glGenTextures(1, &tex);
     glBindTexture(GL_TEXTURE_2D, tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image.width, image.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image.image.data());
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_SRGB8_ALPHA8, image.width, image.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image.image.data());
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glGenerateMipmap(GL_TEXTURE_2D);

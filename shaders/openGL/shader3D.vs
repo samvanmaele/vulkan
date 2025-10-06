@@ -16,17 +16,16 @@ layout (std140) uniform VIEW
 
 uniform mat4 model;
 
-out vec2 TexCoords;
 out vec3 fragPos;
 out vec3 fragNorm;
+out vec2 TexCoords;
 
 void main()
 {
     vec4 vertPos = model * vec4(vpos, 1.0);
 
-    TexCoords = vtex;
-    fragPos = vertPos.xyz;
-    fragNorm = (view * vec4(vnorm, 0.0)).xyz;
-
     gl_Position = projection * view * vertPos;
+    fragPos = vertPos.xyz;
+    fragNorm = vec3(view * model * vec4(vnorm, 0.0));
+    TexCoords = vtex;
 }
