@@ -13,12 +13,16 @@ ifeq ($(OS),Windows_NT)
 	TARGET_DEBUG = $(OUTPUT_DEBUG)/engine.exe
 
 	VULKAN_LOCATION = -IC:\VulkanSDK\1.4.321.1\Include
-	SDL3_LOCATION = -IC:\SDL3-3.2.20\include
-	CXXFLAGS = $(CXXFLAGS_COMMON) $(VULKAN_LOCATION) $(SDL3_LOCATION)
-	CXXFLAGS_VOLK = $(CXXFLAGS_COMMON_VOLK) $(VULKAN_LOCATION) $(SDL3_LOCATION)
-	CXXFLAGS_DEBUG = $(CXXFLAGS_COMMON_DEBUG) $(VULKAN_LOCATION) $(SDL3_LOCATION)
+	OPENGL_LOCATION = -IC:\glew-2.1.0\include
+	SDL3_LOCATION = -IC:\SDL3-3.2.20\include -IC:\SDL3_image-3.2.4\include
+	TINYGLTF_LOCATION ?= -IC:\tinygltf-2.9.6
 
-	LDFLAGS = -fuse-ld=lld -LC:\VulkanSDK\1.4.321.1\Lib -LC:\SDL3-3.2.20\lib\x64 -lopengl32 -lGLEW32 -lvulkan-1 -lSDL3 -lSDL3_image -lkernel32 -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 -lversion -luuid -ladvapi32 -lsetupapi -lshell32 -ldinput8
+	CXXFLAGS = $(CXXFLAGS_COMMON) $(VULKAN_LOCATION) $(OPENGL_LOCATION) $(SDL3_LOCATION)
+	CXXFLAGS_VOLK = $(CXXFLAGS_COMMON_VOLK) $(VULKAN_LOCATION) $(OPENGL_LOCATION) $(SDL3_LOCATION) $(TINYGLTF_LOCATION)
+	CXXFLAGS = $(CXXFLAGS_COMMON) $(VULKAN_LOCATION) $(OPENGL_LOCATION) $(SDL3_LOCATION) $(TINYGLTF_LOCATION)
+	CXXFLAGS_DEBUG = $(CXXFLAGS_COMMON_DEBUG) $(VULKAN_LOCATION) $(OPENGL_LOCATION) $(SDL3_LOCATION) $(TINYGLTF_LOCATION)
+
+	LDFLAGS = -fuse-ld=lld -Wl,/SUBSYSTEM:CONSOLE -LC:\VulkanSDK\1.4.321.1\Lib -LC:\glew-2.1.0\lib\Release\x64 -LC:\SDL3-3.2.20\lib\x64 -LC:\SDL3_image-3.2.4\lib\x64 -lopengl32 -lGLEW32 -lvulkan-1 -lSDL3 -lSDL3_image -lkernel32 -luser32 -lgdi32 -lwinmm -limm32 -lole32 -loleaut32 -lversion -luuid -ladvapi32 -lsetupapi -lshell32 -ldinput8
 else
     # linux
     TARGET = $(OUTPUT)/engine
@@ -31,7 +35,7 @@ else
     LDFLAGS  = -fuse-ld=lld -static-libstdc++ -static-libgcc -lSDL3 -lSDL3_image -lGL -lGLU -lGLEW -lvulkan -ldl -lpthread -lm
 endif
 
-SRCS := $(shell find src -type f -name '*.cpp')
+SRCS := $(wildcard src/*.cpp) $(wildcard src/*/*.cpp) $(wildcard src/*/*/*.cpp)
 OBJS_COMMON := $(patsubst src/%.cpp, %.o, $(SRCS)) volk.o
 OBJS_DEBUG := vulkan/vk_debug.o
 

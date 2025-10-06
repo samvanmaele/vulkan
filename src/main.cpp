@@ -38,7 +38,7 @@
 #include "openGL/gl_shader.hpp"
 #include "openGL/gl_loadGLTF.hpp"
 
-const bool forceOpenGL = true;
+const bool forceOpenGL = false;
 const bool EAT_MOUSE = false;
 
 const int targetFPS = 180;
@@ -88,7 +88,7 @@ class Player
         glm::vec3 forward = glm::vec3(0,0,1);
         glm::vec3 right = glm::vec3(1,0,0);
 
-        glm::mat4 update(float moveX, float moveY, float deltaTime)
+        glm::mat4 update(glm::vec2 input, float deltaTime)
         {
             float cosX = std::cos(camEulers.x);
             float sinX = std::sin(camEulers.x);
@@ -102,9 +102,9 @@ class Player
             forward = glm::vec3(cosX,  0, -sinX);
             right   = glm::vec3(sinX, 0, cosX);
 
-            if (moveX || moveY)
+            if (input.x || input.y)
             {
-                glm::vec3 movement = glm::normalize(forward * moveY + right * moveX);
+                glm::vec3 movement = glm::normalize(forward * input.y + right * input.x);
                 //movement = checkCollision(movement) * deltaTime * 0.02f;
                 movement = movement * deltaTime * 0.02f;
                 position += movement;
@@ -382,7 +382,7 @@ class VulkanEngine: EngineBase
 
                     if (updateCam.exchange(false))
                     {
-                        //cachedView = view.load();
+                        cachedView = player.update(moveInput.load(), frametime);
                         updateView = MAX_FRAMES_IN_FLIGHT;
                     }
                     if (updateView)
@@ -565,8 +565,7 @@ class OpenGLEngine: EngineBase
 
                     if (updateCam.exchange(false))
                     {
-                        glm::vec2 input = moveInput.load();
-                        glm::mat4 viewmat = player.update(input.x, input.y, frametime);
+                        glm::mat4 viewmat = player.update(moveInput.load(), frametime);
 
                         glBindBuffer(GL_UNIFORM_BUFFER, viewNoTransPos);
                         glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), &viewmat);
