@@ -154,6 +154,60 @@ class EngineBase
         std::array<bool, SDL_SCANCODE_COUNT> keys{};
         std::atomic<glm::vec2> moveInput;
 
+        constexpr static float skyboxVertices[]
+        {
+            -1.0f,  1.0f, -1.0f,
+            -1.0f, -1.0f, -1.0f,
+            1.0f, -1.0f, -1.0f,
+            1.0f, -1.0f, -1.0f,
+            1.0f,  1.0f, -1.0f,
+            -1.0f,  1.0f, -1.0f,
+
+            -1.0f, -1.0f,  1.0f,
+            -1.0f, -1.0f, -1.0f,
+            -1.0f,  1.0f, -1.0f,
+            -1.0f,  1.0f, -1.0f,
+            -1.0f,  1.0f,  1.0f,
+            -1.0f, -1.0f,  1.0f,
+
+            1.0f, -1.0f, -1.0f,
+            1.0f, -1.0f,  1.0f,
+            1.0f,  1.0f,  1.0f,
+            1.0f,  1.0f,  1.0f,
+            1.0f,  1.0f, -1.0f,
+            1.0f, -1.0f, -1.0f,
+
+            -1.0f, -1.0f,  1.0f,
+            -1.0f,  1.0f,  1.0f,
+            1.0f,  1.0f,  1.0f,
+            1.0f,  1.0f,  1.0f,
+            1.0f, -1.0f,  1.0f,
+            -1.0f, -1.0f,  1.0f,
+
+            -1.0f,  1.0f, -1.0f,
+            1.0f,  1.0f, -1.0f,
+            1.0f,  1.0f,  1.0f,
+            1.0f,  1.0f,  1.0f,
+            -1.0f,  1.0f,  1.0f,
+            -1.0f,  1.0f, -1.0f,
+
+            -1.0f, -1.0f, -1.0f,
+            -1.0f, -1.0f,  1.0f,
+            1.0f, -1.0f, -1.0f,
+            1.0f, -1.0f, -1.0f,
+            -1.0f, -1.0f,  1.0f,
+            1.0f, -1.0f,  1.0f
+        };
+        std::array<const char*, 6> skyboxFaces =
+        {
+            "gfx/skybox/skybox_right.png",
+            "gfx/skybox/skybox_left.png",
+            "gfx/skybox/skybox_top.png",
+            "gfx/skybox/skybox_bottom.png",
+            "gfx/skybox/skybox_front.png",
+            "gfx/skybox/skybox_back.png"
+        };
+
         uint32_t startTime = SDL_GetTicks();
         uint32_t lastTime = SDL_GetTicks();
         uint32_t lastUpdateTime = SDL_GetTicks();
@@ -368,6 +422,7 @@ class VulkanEngine: EngineBase
             renderThread = std::thread([this]()
             {
                 setThreadAffinityAndPriority(1);
+                glm::mat4 cachedViewNoTrans;
                 glm::mat4 cachedView;
                 int updateView;
 
@@ -382,7 +437,11 @@ class VulkanEngine: EngineBase
 
                     if (updateCam.exchange(false))
                     {
-                        cachedView = player.update(moveInput.load(), frametime);
+                        cachedViewNoTrans = player.update(moveInput.load(), frametime);
+                        cachedView = cachedViewNoTrans;
+                        cachedView[3][0] = player.dot1;
+                        cachedView[3][1] = player.dot2;
+                        cachedView[3][2] = player.dot3;
                         updateView = MAX_FRAMES_IN_FLIGHT;
                     }
                     if (updateView)
@@ -667,51 +726,6 @@ class OpenGLEngine: EngineBase
         }
         void setSkyboxShader(int shader)
         {
-            static const float skyboxVertices[]
-            {
-                -1.0f,  1.0f, -1.0f,
-                -1.0f, -1.0f, -1.0f,
-                1.0f, -1.0f, -1.0f,
-                1.0f, -1.0f, -1.0f,
-                1.0f,  1.0f, -1.0f,
-                -1.0f,  1.0f, -1.0f,
-
-                -1.0f, -1.0f,  1.0f,
-                -1.0f, -1.0f, -1.0f,
-                -1.0f,  1.0f, -1.0f,
-                -1.0f,  1.0f, -1.0f,
-                -1.0f,  1.0f,  1.0f,
-                -1.0f, -1.0f,  1.0f,
-
-                1.0f, -1.0f, -1.0f,
-                1.0f, -1.0f,  1.0f,
-                1.0f,  1.0f,  1.0f,
-                1.0f,  1.0f,  1.0f,
-                1.0f,  1.0f, -1.0f,
-                1.0f, -1.0f, -1.0f,
-
-                -1.0f, -1.0f,  1.0f,
-                -1.0f,  1.0f,  1.0f,
-                1.0f,  1.0f,  1.0f,
-                1.0f,  1.0f,  1.0f,
-                1.0f, -1.0f,  1.0f,
-                -1.0f, -1.0f,  1.0f,
-
-                -1.0f,  1.0f, -1.0f,
-                1.0f,  1.0f, -1.0f,
-                1.0f,  1.0f,  1.0f,
-                1.0f,  1.0f,  1.0f,
-                -1.0f,  1.0f,  1.0f,
-                -1.0f,  1.0f, -1.0f,
-
-                -1.0f, -1.0f, -1.0f,
-                -1.0f, -1.0f,  1.0f,
-                1.0f, -1.0f, -1.0f,
-                1.0f, -1.0f, -1.0f,
-                -1.0f, -1.0f,  1.0f,
-                1.0f, -1.0f,  1.0f
-            };
-
             glGenVertexArrays(1, &vaoSkybox);
             glBindVertexArray(vaoSkybox);
 
@@ -724,16 +738,7 @@ class OpenGLEngine: EngineBase
             glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
             glBindVertexArray(0);
 
-            std::array<const char*, 6> faces =
-            {
-                "gfx/skybox/skybox_right.png",
-                "gfx/skybox/skybox_left.png",
-                "gfx/skybox/skybox_top.png",
-                "gfx/skybox/skybox_bottom.png",
-                "gfx/skybox/skybox_front.png",
-                "gfx/skybox/skybox_back.png"
-            };
-            GLuint tex = makeTex3D(faces);
+            GLuint tex = makeTex3D(skyboxFaces);
             useTex(tex, GL_TEXTURE0);
         }
         GLuint makeTex3D(const std::array<const char*, 6>& filepath)

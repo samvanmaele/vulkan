@@ -5,6 +5,8 @@
 class FrameManager
 {
     public:
+        VkCommandPool commandPool;
+
         std::vector<VkImage> swapChainImages;
         VkExtent2D swapChainExtent;
         VkSwapchainKHR swapChain;
@@ -24,9 +26,6 @@ class FrameManager
         void createImageViews(VkDevice &device);
         void createDepthResources(VkPhysicalDevice physicalDevice, VkDevice &device, uint32_t graphicsFamilyIndex, VkQueue graphicsQueue);
         VkFormat findSupportedFormat(VkPhysicalDevice physicalDevice, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
-        void createImage(VkPhysicalDevice physicalDevice, VkDevice device, uint32_t width, uint32_t height, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory);
-        VkImageView createImageView(VkDevice &device, VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
-        void transitionImageLayout(VkDevice device, uint32_t graphicsFamilyIndex, VkQueue graphicsQueue, VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout);
         void createRenderPass(VkDevice &device);
         void createGraphicsPipeline(VkDevice &device, std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts);
         void createFramebuffers(VkDevice &device);

@@ -80,5 +80,5 @@ class GlModel
 		void bindNode(tinygltf::Model& model, const tinygltf::Node& node);
 		void bindMesh(tinygltf::Model& model, tinygltf::Mesh& mesh);
 		void bindAttrib(tinygltf::Model& model, int binding, int vecSize, int attribPos, bool collision);
-		void createTexture(const tinygltf::Model& model, int index);
+		void createTexture(const tinygltf::Image& image, int index);
 };

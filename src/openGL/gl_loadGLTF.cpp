@@ -93,7 +93,7 @@ void GlModel::bindMesh(tinygltf::Model& model, tinygltf::Mesh& mesh)
             {
                 int texIndex = material.values.at("baseColorTexture").TextureIndex();
                 primitiveData.textureIndex = texIndex;
-                createTexture(model, texIndex);
+                createTexture(model.images[texIndex], texIndex);
             }
         }
 
@@ -131,10 +131,8 @@ void GlModel::bindAttrib(tinygltf::Model& model, int binding, int vecSize, int a
     }
     */
 }
-void GlModel::createTexture(const tinygltf::Model& model, int index)
+void GlModel::createTexture(const tinygltf::Image& image, int index)
 {
-    const tinygltf::Image& image = model.images[index];
-
     GLuint tex;
     glGenTextures(1, &tex);
     glBindTexture(GL_TEXTURE_2D, tex);
