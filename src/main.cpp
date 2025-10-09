@@ -38,37 +38,6 @@
 #include "openGL/gl_shader.hpp"
 #include "openGL/gl_loadGLTF.hpp"
 
-const bool forceOpenGL = false;
-const bool EAT_MOUSE = false;
-
-const int targetFPS = 180;
-const int frameDelay = 1000 / targetFPS;
-
-std::vector<std::string> modelPaths
-{
-    "models/vedal987/vedal987.gltf",
-    "models/vedal987/vedal987.gltf",
-    "models/vedal987/vedal987.gltf",
-    "models/vedal987/vedal987.gltf",
-    "models/vedal987/vedal987.gltf",
-    "models/vedal987/vedal987.gltf",
-    "models/vedal987/vedal987.gltf",
-    "models/vedal987/vedal987.gltf",
-    "models/vedal987/vedal987.gltf",
-    "models/vedal987/vedal987.gltf",
-    "models/vedal987/vedal987.gltf",
-    "models/vedal987/vedal987.gltf",
-    "models/vedal987/vedal987.gltf",
-    "models/vedal987/vedal987.gltf",
-    "models/vedal987/vedal987.gltf",
-    "models/vedal987/vedal987.gltf",
-    "models/vedal987/vedal987.gltf",
-    "models/vedal987/vedal987.gltf",
-    "models/vedal987/vedal987.gltf",
-    "models/vedal987/vedal987.gltf",
-};
-std::string playerModelFile = "models/vedal987/vedal987.gltf";
-
 class Player
 {
     public:
@@ -141,18 +110,36 @@ class Player
 class EngineBase
 {
     protected:
-        SDL_Window* window;
-        Player player;
+        const bool forceOpenGL = false;
+        const bool EAT_MOUSE = false;
 
-        std::atomic<bool> running = true;
-        std::atomic<bool> resized = false;
-        std::atomic<bool> updateCam = false;
-        std::atomic<uint32_t> frameCount = 0;
-        std::atomic<uint32_t> frametime;
-        std::atomic<uint32_t> time;
+        const int targetFPS = 180;
+        const int frameDelay = 1000 / targetFPS;
 
-        std::array<bool, SDL_SCANCODE_COUNT> keys{};
-        std::atomic<glm::vec2> moveInput;
+        std::vector<std::string> modelPaths
+        {
+            "models/vedal987/vedal987.gltf",
+            "models/vedal987/vedal987.gltf",
+            "models/vedal987/vedal987.gltf",
+            "models/vedal987/vedal987.gltf",
+            "models/vedal987/vedal987.gltf",
+            "models/vedal987/vedal987.gltf",
+            "models/vedal987/vedal987.gltf",
+            "models/vedal987/vedal987.gltf",
+            "models/vedal987/vedal987.gltf",
+            "models/vedal987/vedal987.gltf",
+            "models/vedal987/vedal987.gltf",
+            "models/vedal987/vedal987.gltf",
+            "models/vedal987/vedal987.gltf",
+            "models/vedal987/vedal987.gltf",
+            "models/vedal987/vedal987.gltf",
+            "models/vedal987/vedal987.gltf",
+            "models/vedal987/vedal987.gltf",
+            "models/vedal987/vedal987.gltf",
+            "models/vedal987/vedal987.gltf",
+            "models/vedal987/vedal987.gltf",
+        };
+        std::string playerModelFile = "models/vedal987/vedal987.gltf";
 
         constexpr static float skyboxVertices[]
         {
@@ -198,7 +185,7 @@ class EngineBase
             -1.0f, -1.0f,  1.0f,
             1.0f, -1.0f,  1.0f
         };
-        std::array<const char*, 6> skyboxFaces =
+        std::array<const char*, 6> skyboxPaths =
         {
             "gfx/skybox/skybox_right.png",
             "gfx/skybox/skybox_left.png",
@@ -207,6 +194,19 @@ class EngineBase
             "gfx/skybox/skybox_front.png",
             "gfx/skybox/skybox_back.png"
         };
+
+        SDL_Window* window;
+        Player player;
+
+        std::atomic<bool> running = true;
+        std::atomic<bool> resized = false;
+        std::atomic<bool> updateCam = false;
+        std::atomic<uint32_t> frameCount = 0;
+        std::atomic<uint32_t> frametime;
+        std::atomic<uint32_t> time;
+
+        std::array<bool, SDL_SCANCODE_COUNT> keys{};
+        std::atomic<glm::vec2> moveInput;
 
         uint32_t startTime = SDL_GetTicks();
         uint32_t lastTime = SDL_GetTicks();
@@ -301,6 +301,9 @@ class VulkanEngine: EngineBase
     public:
         bool initVulkan()
         {
+            //for openGL testing
+            if (forceOpenGL) return false;
+
             initWindow();
             volkInitialize();
 
@@ -313,17 +316,16 @@ class VulkanEngine: EngineBase
                 return false;
             }
 
-            objectManager.init(deviceManager.physicalDevice, deviceManager.device, deviceManager.indices, deviceManager.graphicsQueue, modelPaths, playerModelFile);
+            objectManager.init(deviceManager.physicalDevice, deviceManager.device, deviceManager.indices, deviceManager.graphicsQueue, modelPaths, playerModelFile, skyboxPaths);
             frameManager.init(deviceManager.physicalDevice, deviceManager.device, window, deviceManager.surface, deviceManager.indices, deviceManager.graphicsQueue, deviceManager.swapChainSupport, objectManager.descriptorSetLayouts);
 
-            commandManager.init(deviceManager.device, deviceManager.indices.graphicsFamily.value(), frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.renderPass, objectManager.descriptorSets, objectManager.models, objectManager.player);
+            commandManager.init(deviceManager.device, deviceManager.indices.graphicsFamily.value(), frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.skyboxGraphicsPipeline, frameManager.skyboxPipelineLayout, frameManager.renderPass, objectManager.descriptorSets, objectManager.models, objectManager.player);
             syncManager.createSyncObjects(deviceManager.device);
 
             createRenderthread();
             mainLoop();
             cleanAll();
             cleanInstance();
-
             return true;
         }
 
@@ -350,7 +352,7 @@ class VulkanEngine: EngineBase
             frameManager.reinit(deviceManager.physicalDevice, deviceManager.device, window, deviceManager.surface, deviceManager.indices, deviceManager.graphicsQueue, deviceManager.swapChainSupport);
 
             vkFreeCommandBuffers(deviceManager.device, commandManager.commandPool, static_cast<uint32_t>(commandManager.commandBuffers.size()), commandManager.commandBuffers.data());
-            commandManager.createCommandBuffers(deviceManager.device, frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.renderPass, objectManager.descriptorSets, objectManager.models, objectManager.player);
+            commandManager.createCommandBuffers(deviceManager.device, frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.skyboxGraphicsPipeline, frameManager.skyboxPipelineLayout, frameManager.renderPass, objectManager.descriptorSets, objectManager.models, objectManager.player);
         }
 
         std::thread renderThread;
@@ -738,7 +740,7 @@ class OpenGLEngine: EngineBase
             glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
             glBindVertexArray(0);
 
-            GLuint tex = makeTex3D(skyboxFaces);
+            GLuint tex = makeTex3D(skyboxPaths);
             useTex(tex, GL_TEXTURE0);
         }
         GLuint makeTex3D(const std::array<const char*, 6>& filepath)
@@ -775,7 +777,7 @@ int main(int argc, char* argv[])
         pass
     #else
         VulkanEngine vulkanEngine;
-        if (forceOpenGL || !vulkanEngine.initVulkan())
+        if (!vulkanEngine.initVulkan())
         {
             std::cout << "Failed to create vulkan instance\n" << std::endl;
             OpenGLEngine openglEngine;

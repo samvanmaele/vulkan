@@ -59,7 +59,7 @@ void FrameManager::init(VkPhysicalDevice physicalDevice, VkDevice &device, SDL_W
     createImageViews(device);
     createDepthResources(physicalDevice, device, queueIndices.graphicsFamily.value(), graphicsQueue);
     createRenderPass(device);
-    createGraphicsPipeline(device, descriptorSetLayouts);
+    createGraphicsPipeline(device, descriptorSetLayouts, "shaders/vulkan/triangle.vert.spv", "shaders/vulkan/triangle.frag.spv");
     createFramebuffers(device);
 }
 void FrameManager::reinit(VkPhysicalDevice physicalDevice, VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, VkQueue graphicsQueue, SwapChainSupportDetails &swapChainSupport)
@@ -124,16 +124,16 @@ void FrameManager::createImageViews(VkDevice &device)
 
     for (size_t i = 0; i < swapChainImages.size(); i++)
     {
-        BufferManager::createImageView(device, swapChainImages[i], swapChainImageViews[i], swapChainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT);
+        BufferManager::createImageView(device, swapChainImages[i], swapChainImageViews[i], swapChainImageFormat, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D, 1);
     }
 }
 void FrameManager::createDepthResources(VkPhysicalDevice physicalDevice, VkDevice &device, uint32_t graphicsFamilyIndex, VkQueue graphicsQueue)
 {
     depthFormat = findSupportedFormat(physicalDevice, {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT}, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
 
-    BufferManager::createImage(physicalDevice, device, swapChainExtent.width, swapChainExtent.height, depthFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage, depthImageMemory);
-    BufferManager::createImageView(device, depthImage, depthImageView, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
-    BufferManager::transitionImageLayout(device, graphicsQueue, commandPool, depthImage, depthFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+    BufferManager::createImage(physicalDevice, device, swapChainExtent.width, swapChainExtent.height, depthFormat, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depthImage, depthImageMemory, 0);
+    BufferManager::createImageView(device, depthImage, depthImageView, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_VIEW_TYPE_2D, 1);
+    BufferManager::transitionImageLayout(device, graphicsQueue, commandPool, depthImage, depthFormat, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL, 1);
 }
 VkFormat FrameManager::findSupportedFormat(VkPhysicalDevice physicalDevice, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features)
 {
@@ -209,10 +209,10 @@ void FrameManager::createRenderPass(VkDevice &device)
 
     vk_check(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass), "failed to create render pass!");
 }
-void FrameManager::createGraphicsPipeline(VkDevice &device, std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts)
+void FrameManager::createGraphicsPipeline(VkDevice &device, std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts, const std::string vertexPath, const std::string fragmentPath)
 {
-    auto vertShaderCode = readFile("shaders/vulkan/triangle.vert.spv");
-    auto fragShaderCode = readFile("shaders/vulkan/triangle.frag.spv");
+    auto vertShaderCode = readFile(vertexPath);
+    auto fragShaderCode = readFile(fragmentPath);
 
     VkShaderModule vertShaderModule = createShaderModule(device, vertShaderCode);
     VkShaderModule fragShaderModule = createShaderModule(device, fragShaderCode);

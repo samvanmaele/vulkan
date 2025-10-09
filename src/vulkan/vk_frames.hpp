@@ -11,8 +11,12 @@ class FrameManager
         VkExtent2D swapChainExtent;
         VkSwapchainKHR swapChain;
         std::vector<VkFramebuffer> swapChainFramebuffers;
+
         VkPipeline graphicsPipeline;
         VkPipelineLayout pipelineLayout;
+        VkPipeline skyboxGraphicsPipeline;
+        VkPipelineLayout skyboxPipelineLayout;
+
         VkRenderPass renderPass;
 
         VkImage depthImage;
@@ -27,7 +31,7 @@ class FrameManager
         void createDepthResources(VkPhysicalDevice physicalDevice, VkDevice &device, uint32_t graphicsFamilyIndex, VkQueue graphicsQueue);
         VkFormat findSupportedFormat(VkPhysicalDevice physicalDevice, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
         void createRenderPass(VkDevice &device);
-        void createGraphicsPipeline(VkDevice &device, std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts);
+        void createGraphicsPipeline(VkDevice &device, std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts, const std::string vertexPath, const std::string fragmentPath);
         void createFramebuffers(VkDevice &device);
         void cleanupSwapChain(VkDevice &device);
         void cleanupPipeline(VkDevice &device);
