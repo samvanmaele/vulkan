@@ -5,8 +5,9 @@
 #include <SDL3_image/SDL_image.h>
 #include <cstdint>
 #include <cstring>
+#include <vulkan/vulkan_core.h>
 
-void ObjectManager::init(VkPhysicalDevice physicalDevice, VkDevice device, QueueFamilyIndices queueIndices, VkQueue graphicsQueue, std::vector<std::string> &modelPaths, std::string playerModelFile, std::array<const char*, 6> skyboxPaths)
+void ObjectManager::init(VkPhysicalDevice physicalDevice, VkDevice device, QueueFamilyIndices queueIndices, VkQueue graphicsQueue, std::vector<std::string> &modelPaths, std::string playerModelFile, std::array<float, 108> skyboxVertices, std::array<const char*, 6> skyboxPaths)
 {
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -20,6 +21,7 @@ void ObjectManager::init(VkPhysicalDevice physicalDevice, VkDevice device, Queue
     }
     player = VkModel(physicalDevice, device, graphicsQueue, commandPool, playerModelFile.c_str());
     createSkybox(physicalDevice, device, graphicsQueue, commandPool, skyboxPaths);
+    BufferManager::stageBuffer(physicalDevice, device, graphicsQueue, commandPool, skyboxVertices.data(), sizeof(skyboxVertices), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, skyboxPositionBuffer, skyboxPositionBufferMemory);
 
     createDescriptorSetLayout(device);
     createTextureSampler(physicalDevice, device);
@@ -121,11 +123,11 @@ void ObjectManager::createTextureSampler(VkPhysicalDevice physicalDevice, VkDevi
 
     VkSamplerCreateInfo samplerInfo{};
     samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-    samplerInfo.magFilter = VK_FILTER_NEAREST;
-    samplerInfo.minFilter = VK_FILTER_NEAREST;
-    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    samplerInfo.magFilter = VK_FILTER_LINEAR;
+    samplerInfo.minFilter = VK_FILTER_LINEAR;
+    samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+    samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     samplerInfo.anisotropyEnable = VK_TRUE;
     samplerInfo.maxAnisotropy = properties.limits.maxSamplerAnisotropy;
     samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
@@ -328,6 +330,9 @@ void ObjectManager::destroyAll(VkDevice device)
         model.destroyAll(device);
     }
     player.destroyAll(device);
+
+    vkDestroyBuffer(device, skyboxPositionBuffer, nullptr);
+    vkFreeMemory(device, skyboxPositionBufferMemory, nullptr);
 
     vkDestroyImageView(device, skyboxImageView, nullptr);
     vkDestroyImage(device, skyboxImage, nullptr);

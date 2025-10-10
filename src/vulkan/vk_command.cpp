@@ -3,10 +3,10 @@
 #include <cstddef>
 #include <vulkan/vulkan_core.h>
 
-void CommandManager::init(VkDevice &device, uint32_t graphicsFamilyIndex, size_t swapChainSize, std::vector<VkFramebuffer> &swapChainFramebuffers, VkExtent2D &swapChainExtent, VkPipeline &graphicsPipeline, VkPipelineLayout pipelineLayout, VkPipeline skyboxPipeline, VkPipelineLayout skyboxPipelineLayout, VkRenderPass &renderPass, std::array<std::vector<VkDescriptorSet>, 2> descriptorSets, const std::vector<VkModel>& models, VkModel player)
+void CommandManager::init(VkDevice &device, uint32_t graphicsFamilyIndex, size_t swapChainSize, std::vector<VkFramebuffer> &swapChainFramebuffers, VkExtent2D &swapChainExtent, VkPipeline &graphicsPipeline, VkPipelineLayout pipelineLayout, VkPipeline skyboxPipeline, VkPipelineLayout skyboxPipelineLayout, VkBuffer skyboxPosBuffer, VkRenderPass &renderPass, std::array<std::vector<VkDescriptorSet>, 2> descriptorSets, const std::vector<VkModel>& models, VkModel player)
 {
     createCommandPool(device, graphicsFamilyIndex);
-    createCommandBuffers(device, swapChainSize, swapChainFramebuffers, swapChainExtent, graphicsPipeline, pipelineLayout, skyboxPipeline, skyboxPipelineLayout, renderPass, descriptorSets, models, player);
+    createCommandBuffers(device, swapChainSize, swapChainFramebuffers, swapChainExtent, graphicsPipeline, pipelineLayout, skyboxPipeline, skyboxPipelineLayout, skyboxPosBuffer, renderPass, descriptorSets, models, player);
 }
 void CommandManager::createCommandPool(VkDevice &device, uint32_t graphicsFamilyIndex)
 {
@@ -17,7 +17,7 @@ void CommandManager::createCommandPool(VkDevice &device, uint32_t graphicsFamily
 
     vk_check(vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool), "failed to create command pool!");
 }
-void CommandManager::createCommandBuffers(VkDevice &device, size_t swapchainSize, std::vector<VkFramebuffer> &swapChainFramebuffers, VkExtent2D &swapChainExtent, VkPipeline &graphicsPipeline, VkPipelineLayout pipelineLayout, VkPipeline skyboxPipeline, VkPipelineLayout skyboxPipelineLayout, VkRenderPass &renderPass, std::array<std::vector<VkDescriptorSet>, 2> descriptorSets, const std::vector<VkModel>& models, VkModel player)
+void CommandManager::createCommandBuffers(VkDevice &device, size_t swapchainSize, std::vector<VkFramebuffer> &swapChainFramebuffers, VkExtent2D &swapChainExtent, VkPipeline &graphicsPipeline, VkPipelineLayout pipelineLayout, VkPipeline skyboxPipeline, VkPipelineLayout skyboxPipelineLayout, VkBuffer skyboxPosBuffer, VkRenderPass &renderPass, std::array<std::vector<VkDescriptorSet>, 2> descriptorSets, const std::vector<VkModel>& models, VkModel player)
 {
     commandBuffers.resize(swapchainSize);
 
@@ -31,10 +31,10 @@ void CommandManager::createCommandBuffers(VkDevice &device, size_t swapchainSize
 
     for (size_t i = 0; i < commandBuffers.size(); i++)
     {
-        recordCommandBuffer(commandBuffers[i], swapChainFramebuffers[i], swapChainExtent, graphicsPipeline, pipelineLayout, skyboxPipeline, skyboxPipelineLayout, renderPass, descriptorSets, models, player, i);
+        recordCommandBuffer(commandBuffers[i], swapChainFramebuffers[i], swapChainExtent, graphicsPipeline, pipelineLayout, skyboxPipeline, skyboxPipelineLayout, skyboxPosBuffer, renderPass, descriptorSets, models, player, i);
     }
 }
-void CommandManager::recordCommandBuffer(VkCommandBuffer commandBuffer, VkFramebuffer swapChainFramebuffer, VkExtent2D swapChainExtent, VkPipeline graphicsPipeline, VkPipelineLayout pipelineLayout, VkPipeline skyboxPipeline, VkPipelineLayout skyboxPipelineLayout, VkRenderPass renderPass, std::array<std::vector<VkDescriptorSet>, 2> descriptorSets, const std::vector<VkModel>& models, VkModel &player, size_t i)
+void CommandManager::recordCommandBuffer(VkCommandBuffer commandBuffer, VkFramebuffer swapChainFramebuffer, VkExtent2D swapChainExtent, VkPipeline graphicsPipeline, VkPipelineLayout pipelineLayout, VkPipeline skyboxPipeline, VkPipelineLayout skyboxPipelineLayout, VkBuffer skyboxPosBuffer, VkRenderPass renderPass, std::array<std::vector<VkDescriptorSet>, 2> descriptorSets, const std::vector<VkModel>& models, VkModel &player, size_t i)
 {
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -78,12 +78,11 @@ void CommandManager::recordCommandBuffer(VkCommandBuffer commandBuffer, VkFrameb
     size_t playerObjectIndexBase = models.size() * MAX_FRAMES_IN_FLIGHT;
     for (const auto& primitive : player.primitiveDataList)
     {
-        VkBuffer vertexBuffers[] = {primitive.posBuffer, primitive.normalBuffer, primitive.texBuffer};
+        VkBuffer vertexBuffers[] = {primitive.positionBuffer, primitive.normalBuffer, primitive.texBuffer};
         VkDeviceSize offsets[] = {0, 0, 0};
         vkCmdBindVertexBuffers(commandBuffer, 0, 3, vertexBuffers, offsets);
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 1, 1, &descriptorSets[1][playerObjectIndexBase + i], 0, nullptr);
 
-        // Check if there are indices before binding the index buffer and drawing
         if (primitive.indexCount > 0)
         {
             vkCmdBindIndexBuffer(commandBuffer, primitive.indexBuffer, 0, primitive.indexType);
@@ -99,12 +98,11 @@ void CommandManager::recordCommandBuffer(VkCommandBuffer commandBuffer, VkFrameb
     {
         for (const auto& primitive : models[j].primitiveDataList)
         {
-            VkBuffer vertexBuffers[] = {primitive.posBuffer, primitive.normalBuffer, primitive.texBuffer};
+            VkBuffer vertexBuffers[] = {primitive.positionBuffer, primitive.normalBuffer, primitive.texBuffer};
             VkDeviceSize offsets[] = {0, 0, 0};
             vkCmdBindVertexBuffers(commandBuffer, 0, 3, vertexBuffers, offsets);
             vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 1, 1, &descriptorSets[1][j * MAX_FRAMES_IN_FLIGHT + i], 0, nullptr);
 
-            // Check if there are indices before binding the index buffer and drawing
             if (primitive.indexCount > 0)
             {
                 vkCmdBindIndexBuffer(commandBuffer, primitive.indexBuffer, 0, primitive.indexType);
@@ -117,7 +115,6 @@ void CommandManager::recordCommandBuffer(VkCommandBuffer commandBuffer, VkFrameb
         }
     }
 
-    /*
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipeline);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, skyboxPipelineLayout, 0, 1, &descriptorSets[0][i], 0, nullptr);
 
@@ -128,7 +125,6 @@ void CommandManager::recordCommandBuffer(VkCommandBuffer commandBuffer, VkFrameb
     VkDeviceSize offsets[] = {0};
     vkCmdBindVertexBuffers(commandBuffer, 0, 1, skyboxVertexBuffers, offsets);
     vkCmdDraw(commandBuffer, 36, 1, 0, 0);
-    */
 
     vkCmdEndRenderPass(commandBuffer);
     vk_check(vkEndCommandBuffer(commandBuffer), "failed to record command buffer!");

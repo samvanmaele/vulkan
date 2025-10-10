@@ -77,7 +77,7 @@ void VkModel::bindMesh(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue
             else if (attrib.first == "TEXCOORD_0") texAttrib = getAttrib(model, vertexCount, attrib.second, false);
         }
         primitiveData.vertexCount = vertexCount;
-        BufferManager::stageBuffer(physicalDevice, device, graphicsQueue, commandPool, posAttrib.dataPtr, vertexCount * posAttrib.stride, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, primitiveData.posBuffer, primitiveData.positionBufferMemory);
+        BufferManager::stageBuffer(physicalDevice, device, graphicsQueue, commandPool, posAttrib.dataPtr, vertexCount * posAttrib.stride, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, primitiveData.positionBuffer, primitiveData.positionBufferMemory);
 
         if (normAttrib.dataPtr)
         {

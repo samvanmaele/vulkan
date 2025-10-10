@@ -17,7 +17,7 @@ class VkModel
             size_t vertexCount, indexCount;
             VkIndexType indexType;
 
-            VkBuffer posBuffer;
+            VkBuffer positionBuffer;
             VkDeviceMemory positionBufferMemory;
             VkBuffer normalBuffer;
             VkDeviceMemory normalBufferMemory;
@@ -39,7 +39,7 @@ class VkModel
             }
             void destroyVertexBuffers(VkDevice device)
             {
-                vkDestroyBuffer(device, posBuffer, nullptr);
+                vkDestroyBuffer(device, positionBuffer, nullptr);
                 vkFreeMemory(device, positionBufferMemory, nullptr);
                 vkDestroyBuffer(device, normalBuffer, nullptr);
                 vkFreeMemory(device, normalBufferMemory, nullptr);

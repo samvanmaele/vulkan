@@ -11,6 +11,9 @@ class ObjectManager
         VkDeviceMemory skyboxImageMemory;
         VkImageView skyboxImageView;
 
+        VkBuffer skyboxPositionBuffer;
+        VkDeviceMemory skyboxPositionBufferMemory;
+
         VkSampler textureSampler;
 
         std::vector<VkBuffer> globalUniformBuffers;
@@ -28,7 +31,7 @@ class ObjectManager
         std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts;
         std::array<std::vector<VkDescriptorSet>, 2> descriptorSets;
 
-        void init(VkPhysicalDevice physicalDevice, VkDevice device, QueueFamilyIndices queueIndices, VkQueue graphicsQueue, std::vector<std::string> &modelPaths, std::string playerModelFile, std::array<const char*, 6> skyboxPaths);
+        void init(VkPhysicalDevice physicalDevice, VkDevice device, QueueFamilyIndices queueIndices, VkQueue graphicsQueue, std::vector<std::string> &modelPaths, std::string playerModelFile, std::array<float, 108> skyboxVertices, std::array<const char*, 6> skyboxPaths);
         void createSkybox(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, std::array<const char*, 6> skyboxPaths);
         void createTextureSampler(VkPhysicalDevice physicalDevice, VkDevice device);
         void createDescriptorSetLayout(VkDevice device);

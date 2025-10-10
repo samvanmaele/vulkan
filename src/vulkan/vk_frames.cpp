@@ -6,46 +6,7 @@
 #include <fstream>
 #include <iostream>
 #include <array>
-
-static std::array<VkVertexInputBindingDescription, 3> getBindingDescription()
-{
-    std::array<VkVertexInputBindingDescription, 3> bindings{};
-
-    bindings[0].binding = 0;
-    bindings[0].stride = sizeof(glm::vec3);
-    bindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-    bindings[1].binding = 1;
-    bindings[1].stride = sizeof(glm::vec3);
-    bindings[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-    bindings[2].binding = 2;
-    bindings[2].stride = sizeof(glm::vec2);
-    bindings[2].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-    return bindings;
-}
-static std::array<VkVertexInputAttributeDescription, 3> getAttributeDescriptions()
-{
-    std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions{};
-
-    attributeDescriptions[0].binding = 0;
-    attributeDescriptions[0].location = 0;
-    attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attributeDescriptions[0].offset = 0;
-
-    attributeDescriptions[1].binding = 1;
-    attributeDescriptions[1].location = 1;
-    attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attributeDescriptions[1].offset = 0;
-
-    attributeDescriptions[2].binding = 2;
-    attributeDescriptions[2].location = 2;
-    attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-    attributeDescriptions[2].offset = 0;
-
-    return attributeDescriptions;
-}
+#include <vulkan/vulkan_core.h>
 
 void FrameManager::init(VkPhysicalDevice physicalDevice, VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &queueIndices, VkQueue graphicsQueue, SwapChainSupportDetails &swapChainSupport, std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts)
 {
@@ -59,7 +20,8 @@ void FrameManager::init(VkPhysicalDevice physicalDevice, VkDevice &device, SDL_W
     createImageViews(device);
     createDepthResources(physicalDevice, device, queueIndices.graphicsFamily.value(), graphicsQueue);
     createRenderPass(device);
-    createGraphicsPipeline(device, descriptorSetLayouts, "shaders/vulkan/triangle.vert.spv", "shaders/vulkan/triangle.frag.spv");
+    createGraphicsPipelines(device, descriptorSetLayouts);
+
     createFramebuffers(device);
 }
 void FrameManager::reinit(VkPhysicalDevice physicalDevice, VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, VkQueue graphicsQueue, SwapChainSupportDetails &swapChainSupport)
@@ -209,10 +171,48 @@ void FrameManager::createRenderPass(VkDevice &device)
 
     vk_check(vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass), "failed to create render pass!");
 }
-void FrameManager::createGraphicsPipeline(VkDevice &device, std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts, const std::string vertexPath, const std::string fragmentPath)
+void FrameManager::createGraphicsPipelines(VkDevice &device, std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts)
 {
-    auto vertShaderCode = readFile(vertexPath);
-    auto fragShaderCode = readFile(fragmentPath);
+    std::vector<VkVertexInputBindingDescription> bindingDescription(3);
+    bindingDescription[0].binding = 0;
+    bindingDescription[0].stride = sizeof(glm::vec3);
+    bindingDescription[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+    bindingDescription[1].binding = 1;
+    bindingDescription[1].stride = sizeof(glm::vec3);
+    bindingDescription[1].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+    bindingDescription[2].binding = 2;
+    bindingDescription[2].stride = sizeof(glm::vec2);
+    bindingDescription[2].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+    std::vector<VkVertexInputAttributeDescription> attributeDescriptions(3);
+    attributeDescriptions[0].binding = 0;
+    attributeDescriptions[0].location = 0;
+    attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attributeDescriptions[0].offset = 0;
+    attributeDescriptions[1].binding = 1;
+    attributeDescriptions[1].location = 1;
+    attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
+    attributeDescriptions[1].offset = 0;
+    attributeDescriptions[2].binding = 2;
+    attributeDescriptions[2].location = 2;
+    attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
+    attributeDescriptions[2].offset = 0;
+    createGraphicsPipeline(device, descriptorSetLayouts, bindingDescription, attributeDescriptions, object3DPipelineLayout, object3DGraphicsPipeline, true, true, "shaders/vulkan/triangle.vert.spv", "shaders/vulkan/triangle.frag.spv");
+
+    std::vector<VkVertexInputBindingDescription> skyboxBindingDescription(1);
+    skyboxBindingDescription[0].binding = 0;
+    skyboxBindingDescription[0].stride = sizeof(glm::vec3);
+    skyboxBindingDescription[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+    std::vector<VkVertexInputAttributeDescription> skyboxAttributeDescriptions(1);
+    skyboxAttributeDescriptions[0].binding = 0;
+    skyboxAttributeDescriptions[0].location = 0;
+    skyboxAttributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
+    skyboxAttributeDescriptions[0].offset = 0;
+    createGraphicsPipeline(device, descriptorSetLayouts, skyboxBindingDescription, skyboxAttributeDescriptions, skyboxPipelineLayout, skyboxGraphicsPipeline, true, false, "shaders/vulkan/skybox.vert.spv", "shaders/vulkan/skybox.frag.spv");
+}
+void FrameManager::createGraphicsPipeline(VkDevice &device, std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts, std::vector<VkVertexInputBindingDescription> bindingDescription, std::vector<VkVertexInputAttributeDescription> attributeDescriptions, VkPipelineLayout &pipelineLayout, VkPipeline &graphicsPipeline, bool depthTesting, bool depthWriting, const std::string vertexPath, const std::string fragmentPath)
+{
+    std::vector<char> vertShaderCode = readFile(vertexPath);
+    std::vector<char> fragShaderCode = readFile(fragmentPath);
 
     VkShaderModule vertShaderModule = createShaderModule(device, vertShaderCode);
     VkShaderModule fragShaderModule = createShaderModule(device, fragShaderCode);
@@ -228,9 +228,6 @@ void FrameManager::createGraphicsPipeline(VkDevice &device, std::array<VkDescrip
     fragShaderStageInfo.module = fragShaderModule;
     fragShaderStageInfo.pName = "main";
     VkPipelineShaderStageCreateInfo shaderStages[] = {vertShaderStageInfo, fragShaderStageInfo};
-
-    auto bindingDescription = getBindingDescription();
-    auto attributeDescriptions = getAttributeDescriptions();
 
     VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
     vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -280,9 +277,9 @@ void FrameManager::createGraphicsPipeline(VkDevice &device, std::array<VkDescrip
 
     VkPipelineDepthStencilStateCreateInfo depthStencil{};
     depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    depthStencil.depthTestEnable = VK_TRUE;
-    depthStencil.depthWriteEnable = VK_TRUE;
-    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS;
+    depthStencil.depthTestEnable = depthTesting ? VK_TRUE : VK_FALSE;
+    depthStencil.depthWriteEnable = depthWriting ? VK_TRUE : VK_FALSE;
+    depthStencil.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
     depthStencil.depthBoundsTestEnable = VK_FALSE;
     depthStencil.minDepthBounds = 0.0f;
     depthStencil.maxDepthBounds = 1.0f;
@@ -381,10 +378,12 @@ void FrameManager::cleanupSwapChain(VkDevice &device)
 }
 void FrameManager::cleanupPipeline(VkDevice &device)
 {
-    vkDestroyPipeline(device, graphicsPipeline, nullptr);
-    vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
-    vkDestroyRenderPass(device, renderPass, nullptr);
+    vkDestroyPipeline(device, object3DGraphicsPipeline, nullptr);
+    vkDestroyPipelineLayout(device, object3DPipelineLayout, nullptr);
+    vkDestroyPipeline(device, skyboxGraphicsPipeline, nullptr);
+    vkDestroyPipelineLayout(device, skyboxPipelineLayout, nullptr);
 
+    vkDestroyRenderPass(device, renderPass, nullptr);
     vkDestroyCommandPool(device, commandPool, nullptr);
 }
 VkSurfaceFormatKHR FrameManager::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats)

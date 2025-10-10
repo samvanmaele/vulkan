@@ -113,8 +113,8 @@ class EngineBase
         const bool forceOpenGL = false;
         const bool EAT_MOUSE = false;
 
-        const int targetFPS = 180;
-        const int frameDelay = 1000 / targetFPS;
+        const int updateloopTargetFPS = 180;
+        const int updateloopFrameDelay = 1000 / updateloopTargetFPS;
 
         std::vector<std::string> modelPaths
         {
@@ -141,7 +141,7 @@ class EngineBase
         };
         std::string playerModelFile = "models/vedal987/vedal987.gltf";
 
-        constexpr static float skyboxVertices[]
+        std::array<float, 108> skyboxVertices
         {
             -1.0f,  1.0f, -1.0f,
             -1.0f, -1.0f, -1.0f,
@@ -316,10 +316,10 @@ class VulkanEngine: EngineBase
                 return false;
             }
 
-            objectManager.init(deviceManager.physicalDevice, deviceManager.device, deviceManager.indices, deviceManager.graphicsQueue, modelPaths, playerModelFile, skyboxPaths);
+            objectManager.init(deviceManager.physicalDevice, deviceManager.device, deviceManager.indices, deviceManager.graphicsQueue, modelPaths, playerModelFile, skyboxVertices, skyboxPaths);
             frameManager.init(deviceManager.physicalDevice, deviceManager.device, window, deviceManager.surface, deviceManager.indices, deviceManager.graphicsQueue, deviceManager.swapChainSupport, objectManager.descriptorSetLayouts);
 
-            commandManager.init(deviceManager.device, deviceManager.indices.graphicsFamily.value(), frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.skyboxGraphicsPipeline, frameManager.skyboxPipelineLayout, frameManager.renderPass, objectManager.descriptorSets, objectManager.models, objectManager.player);
+            commandManager.init(deviceManager.device, deviceManager.indices.graphicsFamily.value(), frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.object3DGraphicsPipeline, frameManager.object3DPipelineLayout, frameManager.skyboxGraphicsPipeline, frameManager.skyboxPipelineLayout, objectManager.skyboxPositionBuffer, frameManager.renderPass, objectManager.descriptorSets, objectManager.models, objectManager.player);
             syncManager.createSyncObjects(deviceManager.device);
 
             createRenderthread();
@@ -352,7 +352,7 @@ class VulkanEngine: EngineBase
             frameManager.reinit(deviceManager.physicalDevice, deviceManager.device, window, deviceManager.surface, deviceManager.indices, deviceManager.graphicsQueue, deviceManager.swapChainSupport);
 
             vkFreeCommandBuffers(deviceManager.device, commandManager.commandPool, static_cast<uint32_t>(commandManager.commandBuffers.size()), commandManager.commandBuffers.data());
-            commandManager.createCommandBuffers(deviceManager.device, frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.graphicsPipeline, frameManager.pipelineLayout, frameManager.skyboxGraphicsPipeline, frameManager.skyboxPipelineLayout, frameManager.renderPass, objectManager.descriptorSets, objectManager.models, objectManager.player);
+            commandManager.createCommandBuffers(deviceManager.device, frameManager.swapChainImages.size(), frameManager.swapChainFramebuffers, frameManager.swapChainExtent, frameManager.object3DGraphicsPipeline, frameManager.object3DPipelineLayout, frameManager.skyboxGraphicsPipeline, frameManager.skyboxPipelineLayout, objectManager.skyboxPositionBuffer, frameManager.renderPass, objectManager.descriptorSets, objectManager.models, objectManager.player);
         }
 
         std::thread renderThread;
@@ -375,7 +375,7 @@ class VulkanEngine: EngineBase
                 }
 
                 calculateFramerate();
-                SDL_Delay(frameDelay);
+                SDL_Delay(updateloopFrameDelay);
             }
         }
 
@@ -592,7 +592,7 @@ class OpenGLEngine: EngineBase
                 }
 
                 calculateFramerate();
-                SDL_Delay(frameDelay);
+                SDL_Delay(updateloopFrameDelay);
             }
         }
 
@@ -734,7 +734,7 @@ class OpenGLEngine: EngineBase
             GLuint vboSkybox;
             glGenBuffers(1, &vboSkybox);
             glBindBuffer(GL_ARRAY_BUFFER, vboSkybox);
-            glBufferData(GL_ARRAY_BUFFER, sizeof(skyboxVertices), skyboxVertices, GL_STATIC_DRAW);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(skyboxVertices), skyboxVertices.data(), GL_STATIC_DRAW);
 
             glEnableVertexAttribArray(0);
             glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);

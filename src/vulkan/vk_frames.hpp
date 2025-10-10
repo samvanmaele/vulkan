@@ -12,8 +12,8 @@ class FrameManager
         VkSwapchainKHR swapChain;
         std::vector<VkFramebuffer> swapChainFramebuffers;
 
-        VkPipeline graphicsPipeline;
-        VkPipelineLayout pipelineLayout;
+        VkPipeline object3DGraphicsPipeline;
+        VkPipelineLayout object3DPipelineLayout;
         VkPipeline skyboxGraphicsPipeline;
         VkPipelineLayout skyboxPipelineLayout;
 
@@ -31,7 +31,8 @@ class FrameManager
         void createDepthResources(VkPhysicalDevice physicalDevice, VkDevice &device, uint32_t graphicsFamilyIndex, VkQueue graphicsQueue);
         VkFormat findSupportedFormat(VkPhysicalDevice physicalDevice, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
         void createRenderPass(VkDevice &device);
-        void createGraphicsPipeline(VkDevice &device, std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts, const std::string vertexPath, const std::string fragmentPath);
+        void createGraphicsPipelines(VkDevice &device, std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts);
+        void createGraphicsPipeline(VkDevice &device, std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts, std::vector<VkVertexInputBindingDescription> bindings, std::vector<VkVertexInputAttributeDescription> attributeDescriptions, VkPipelineLayout &pipelineLayout, VkPipeline &graphicsPipeline, bool depthTesting, bool depthWriting, const std::string vertexPath, const std::string fragmentPath);
         void createFramebuffers(VkDevice &device);
         void cleanupSwapChain(VkDevice &device);
         void cleanupPipeline(VkDevice &device);
