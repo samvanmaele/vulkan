@@ -58,7 +58,7 @@ void ObjectManager::createSkybox(VkPhysicalDevice physicalDevice, VkDevice devic
 
     vkUnmapMemory(device, stagingBufferMemory);
 
-    BufferManager::createImage(physicalDevice, device, width, height, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, skyboxImage, skyboxImageMemory, VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT);
+    BufferManager::createImage(physicalDevice, device, width, height, 1, VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, skyboxImage, skyboxImageMemory, VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT);
     BufferManager::transitionImageLayout(device, graphicsQueue, commandPool, skyboxImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 6);
     BufferManager::copyBufferToImage(device, graphicsQueue, commandPool, stagingBuffer, skyboxImage, width, height, 6);
     BufferManager::transitionImageLayout(device, graphicsQueue, commandPool, skyboxImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 6);

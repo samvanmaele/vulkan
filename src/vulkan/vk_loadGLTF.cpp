@@ -146,7 +146,7 @@ void VkModel::createTexture(VkPhysicalDevice physicalDevice, VkDevice device, Vk
     memcpy(data, image.image.data(), static_cast<size_t>(imageSize));
     vkUnmapMemory(device, stagingBufferMemory);
 
-    BufferManager::createImage(physicalDevice, device, image.width, image.height, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, primitiveData.textureImage, primitiveData.textureImageMemory, 0);
+    BufferManager::createImage(physicalDevice, device, image.width, image.height, 1, VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, primitiveData.textureImage, primitiveData.textureImageMemory, 0);
     BufferManager::transitionImageLayout(device, graphicsQueue, commandPool, primitiveData.textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1);
     BufferManager::copyBufferToImage(device, graphicsQueue, commandPool, stagingBuffer, primitiveData.textureImage, image.width, image.height, 1);
     BufferManager::transitionImageLayout(device, graphicsQueue, commandPool, primitiveData.textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 1);

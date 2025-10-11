@@ -1,4 +1,5 @@
 #include <SDL3/SDL_events.h>
+#include <cmath>
 #include <glm/ext/matrix_float4x4.hpp>
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
@@ -26,6 +27,7 @@
 #include <atomic>
 #include <iostream>
 #include <stdexcept>
+#include <chrono>
 
 #include "vulkan/common.hpp"
 #include "vulkan/vk_debug.hpp"
@@ -75,7 +77,7 @@ class Player
             {
                 glm::vec3 movement = glm::normalize(forward * input.y + right * input.x);
                 //movement = checkCollision(movement) * deltaTime * 0.02f;
-                movement = movement * deltaTime * 0.02f;
+                movement = movement * deltaTime * 20.0f;
                 position += movement;
             }
 
@@ -110,11 +112,15 @@ class Player
 class EngineBase
 {
     protected:
-        const bool forceOpenGL = false;
+        const bool FORCE_OPENGL = false;
         const bool EAT_MOUSE = false;
 
-        const int updateloopTargetFPS = 180;
-        const int updateloopFrameDelay = 1000 / updateloopTargetFPS;
+        using clock = std::chrono::steady_clock;
+
+        std::atomic<double> time;
+        const float TPS = 180.0f;
+        const float TICK_RATE = 1.0f / TPS;
+        const clock::duration UPDATE_DELTA = std::chrono::duration_cast<clock::duration>(std::chrono::duration<double>(TICK_RATE));
 
         std::vector<std::string> modelPaths
         {
@@ -201,17 +207,12 @@ class EngineBase
         std::atomic<bool> running = true;
         std::atomic<bool> resized = false;
         std::atomic<bool> updateCam = false;
+
         std::atomic<uint32_t> frameCount = 0;
-        std::atomic<uint32_t> frametime;
-        std::atomic<uint32_t> time;
+        char titleBuffer[64];
 
         std::array<bool, SDL_SCANCODE_COUNT> keys{};
         std::atomic<glm::vec2> moveInput;
-
-        uint32_t startTime = SDL_GetTicks();
-        uint32_t lastTime = SDL_GetTicks();
-        uint32_t lastUpdateTime = SDL_GetTicks();
-        char titleBuffer[64];
 
         void setThreadAffinityAndPriority(const int core_id)
         {
@@ -277,22 +278,19 @@ class EngineBase
                 updateCam.store(true, std::memory_order_release);
             }
         }
-        void calculateFramerate()
+        void calculateFramerate(clock::time_point currentTime)
         {
-            uint32_t currentTime = SDL_GetTicks();
-            frametime = currentTime - lastTime;
-            time = currentTime - startTime;
-            lastTime = currentTime;
+            static clock::time_point lastTime = clock::now();
+            double delta = std::chrono::duration<double>(currentTime - lastTime).count();
 
-            uint32_t frameUpdateTime = currentTime - lastUpdateTime;
-            if (frameUpdateTime >= 1000)
+            if (delta >= 1.0)
             {
-                float fps = 1000.0f * (float)frameCount / (float)frameUpdateTime;
+                float fps = (float)frameCount / delta;
 
                 std::snprintf(titleBuffer, 64, "FPS: %f", fps);
                 SDL_SetWindowTitle(window, titleBuffer);
-                lastUpdateTime = currentTime;
                 frameCount = 0;
+                lastTime = currentTime;
             }
         }
 };
@@ -302,7 +300,7 @@ class VulkanEngine: EngineBase
         bool initVulkan()
         {
             //for openGL testing
-            if (forceOpenGL) return false;
+            if (FORCE_OPENGL) return false;
 
             initWindow();
             volkInitialize();
@@ -360,22 +358,27 @@ class VulkanEngine: EngineBase
         void mainLoop()
         {
             setThreadAffinityAndPriority(0);
+            clock::time_point nextTime = clock::now();
 
             while (running)
             {
+                clock::time_point now = clock::now();
+                nextTime += UPDATE_DELTA;
+                time = std::chrono::duration<double>(now.time_since_epoch()).count();
+
                 pollEvents();
                 inputs();
 
                 for (int i = 0; i < objectManager.models.size(); i++)
                 {
-                    objectManager.models[i].transmat = glm::rotate(glm::mat4(1.0f), 0.001f * time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+                    objectManager.models[i].transmat = glm::rotate(glm::mat4(1.0f), float(time) * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
                     objectManager.models[i].transmat[3][2] -= 5;
                     objectManager.models[i].transmat[3][0] += ((i % 5) - 2.0) * 1.3;
                     objectManager.models[i].transmat[3][1] += int(i/5) * 1.3;
                 }
 
-                calculateFramerate();
-                SDL_Delay(updateloopFrameDelay);
+                calculateFramerate(now);
+                std::this_thread::sleep_until(nextTime);
             }
         }
 
@@ -439,7 +442,7 @@ class VulkanEngine: EngineBase
 
                     if (updateCam.exchange(false))
                     {
-                        cachedViewNoTrans = player.update(moveInput.load(), frametime);
+                        cachedViewNoTrans = player.update(moveInput.load(), TICK_RATE);
                         cachedView = cachedViewNoTrans;
                         cachedView[3][0] = player.dot1;
                         cachedView[3][1] = player.dot2;
@@ -452,7 +455,7 @@ class VulkanEngine: EngineBase
                         updateView--;
                     }
 
-                    objectManager.player.transmat = glm::rotate(glm::mat4(1.0f), 0.001f * time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+                    objectManager.player.transmat = glm::rotate(glm::mat4(1.0f), float(time) * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
                     objectManager.player.transmat[3][0] = player.position.x;
                     objectManager.player.transmat[3][1] = player.position.y;
                     objectManager.player.transmat[3][2] = player.position.z;
@@ -573,9 +576,14 @@ class OpenGLEngine: EngineBase
         void mainLoop()
         {
             setThreadAffinityAndPriority(0);
+            clock::time_point nextTime = clock::now();
 
             while (running)
             {
+                clock::time_point now = clock::now();
+                nextTime += UPDATE_DELTA;
+                time = std::chrono::duration<double>(now.time_since_epoch()).count();
+
                 pollEvents();
                 inputs();
 
@@ -585,14 +593,14 @@ class OpenGLEngine: EngineBase
 
                 for (int i = 0; i < models.size(); i++)
                 {
-                    models[i].transmat = glm::rotate(glm::mat4(1.0f), 0.001f * time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+                    models[i].transmat = glm::rotate(glm::mat4(1.0f), float(time) * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
                     models[i].transmat[3][2] -= 5;
                     models[i].transmat[3][0] += ((i % 5) - 2.0) * 1.3;
                     models[i].transmat[3][1] += int(i/5) * 1.3;
                 }
 
-                calculateFramerate();
-                SDL_Delay(updateloopFrameDelay);
+                calculateFramerate(now);
+                std::this_thread::sleep_until(nextTime);
             }
         }
 
@@ -626,7 +634,7 @@ class OpenGLEngine: EngineBase
 
                     if (updateCam.exchange(false))
                     {
-                        glm::mat4 viewmat = player.update(moveInput.load(), frametime);
+                        glm::mat4 viewmat = player.update(moveInput.load(), TICK_RATE);
 
                         glBindBuffer(GL_UNIFORM_BUFFER, viewNoTransPos);
                         glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), &viewmat);
@@ -638,7 +646,7 @@ class OpenGLEngine: EngineBase
                         glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), &viewmat);
                     }
 
-                    playermodel.transmat = glm::rotate(glm::mat4(1.0f), 0.001f * time * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+                    playermodel.transmat = glm::rotate(glm::mat4(1.0f), float(time) * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
                     playermodel.transmat[3][0] = player.position.x;
                     playermodel.transmat[3][1] = player.position.y;
                     playermodel.transmat[3][2] = player.position.z;

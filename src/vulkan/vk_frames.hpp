@@ -19,6 +19,12 @@ class FrameManager
 
         VkRenderPass renderPass;
 
+        VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+
+        VkImage colorImage;
+        VkDeviceMemory colorImageMemory;
+        VkImageView colorImageView;
+
         VkImage depthImage;
         VkDeviceMemory depthImageMemory;
         VkImageView depthImageView;
@@ -28,7 +34,9 @@ class FrameManager
         void reinit(VkPhysicalDevice physicalDevice, VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, VkQueue graphicsQueue, SwapChainSupportDetails &swapChainSupport);
         void createSwapChain(VkDevice &device, SDL_Window* window, VkSurfaceKHR &surface, QueueFamilyIndices &indices, SwapChainSupportDetails &swapChainSupport);
         void createImageViews(VkDevice &device);
-        void createDepthResources(VkPhysicalDevice physicalDevice, VkDevice &device, uint32_t graphicsFamilyIndex, VkQueue graphicsQueue);
+        VkSampleCountFlagBits getMaxUsableSampleCount(VkPhysicalDevice physicalDevice);
+        void createColorResources(VkPhysicalDevice physicalDevice, VkDevice &device, VkQueue graphicsQueue);
+        void createDepthResources(VkPhysicalDevice physicalDevice, VkDevice &device, VkQueue graphicsQueue);
         VkFormat findSupportedFormat(VkPhysicalDevice physicalDevice, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
         void createRenderPass(VkDevice &device);
         void createGraphicsPipelines(VkDevice &device, std::array<VkDescriptorSetLayout, 2> descriptorSetLayouts);
