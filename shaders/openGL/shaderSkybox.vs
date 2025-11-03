@@ -1,11 +1,11 @@
-#version 300 es
+#version 450
 precision highp float;
 
-layout (std140) uniform PROJ
+layout (std140, binding = 0) uniform PROJ
 {
     mat4 projection;
 };
-layout (std140) uniform VIEWNOTRANS
+layout (std140, binding = 2) uniform VIEWROTATION
 {
     mat4 view;
 };

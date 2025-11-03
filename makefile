@@ -3,7 +3,7 @@ OUTPUT       = output/release
 OUTPUT_DEBUG = output/debug
 OUTPUT_WEB   = output/web
 
-CXXFLAGS_COMMON = -O3 -std=c++23 -Wall -DNDEBUG -I./src -I./src/vulkan -I./src/openGL -I./shaders -I./gfx -DSDL_MAIN_HANDLED -march=native -flto -fomit-frame-pointer -fno-rtti -ffast-math
+CXXFLAGS_COMMON = -O3 -std=c++23 -Wall -DNDEBUG -I./src -I./src/vulkan -I./src/openGL -I./shaders -I./gfx -I/usr/local/include/midifile -DSDL_MAIN_HANDLED -march=native -flto -fomit-frame-pointer -fno-rtti -ffast-math
 CXXFLAGS_COMMON_VOLK = -O3 -Wall -march=native -flto -fomit-frame-pointer
 CXXFLAGS_COMMON_DEBUG = -O0 -g3 -Wall -I./src -I./src/vulkan -I./src/openGL -I./shaders -I./gfx -DSDL_MAIN_HANDLED -std=c++23
 
@@ -32,7 +32,7 @@ else
 	CXXFLAGS_VOLK = $(CXXFLAGS_COMMON_VOLK)
 	CXXFLAGS_DEBUG = $(CXXFLAGS_COMMON_DEBUG)
 
-    LDFLAGS  = -fuse-ld=lld -static-libstdc++ -static-libgcc -lSDL3 -lSDL3_image -lGL -lGLU -lGLEW -lvulkan -ldl -lpthread -lm
+    LDFLAGS  = -fuse-ld=lld -static-libstdc++ -static-libgcc -lmidifile -L/usr/local/lib -lSDL3 -lSDL3_image -lGL -lGLU -lGLEW -lvulkan -ldl -lpthread -lm
 endif
 
 SRCS := $(wildcard src/*.cpp) $(wildcard src/*/*.cpp) $(wildcard src/*/*/*.cpp)

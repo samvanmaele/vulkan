@@ -1,6 +1,7 @@
 #include <SDL3/SDL_events.h>
 #include <cmath>
 #include <glm/ext/matrix_float4x4.hpp>
+#include <ostream>
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEFAULT_ALIGNED_GENTYPES
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -40,6 +41,8 @@
 #include "openGL/gl_shader.hpp"
 #include "openGL/gl_loadGLTF.hpp"
 
+//#include "midi.hpp"
+
 class Player
 {
     public:
@@ -50,16 +53,15 @@ class Player
         glm::vec3 camUp = glm::vec3(0,1,0);
         float zoom = 5.0;
 
-        std::atomic<float> dot1;
-        std::atomic<float> dot2;
-        std::atomic<float> dot3;
-
         glm::vec3 position = glm::vec3(0,0,0);
         glm::vec3 eulers = glm::vec3(0,0,0);
         glm::vec3 forward = glm::vec3(0,0,1);
         glm::vec3 right = glm::vec3(1,0,0);
 
-        glm::mat4 update(glm::vec2 input, float deltaTime)
+        glm::mat4 view = glm::mat4(1.0);
+        glm::vec3 dotPos = glm::vec3(0,0,0);
+
+        void update(glm::vec2 input, float deltaTime)
         {
             float cosX = std::cos(camEulers.x);
             float sinX = std::sin(camEulers.x);
@@ -83,7 +85,6 @@ class Player
 
             camPosition = position - camForward * zoom;
 
-            glm::mat4 view = glm::mat4(1.0);
             view[0][0] = camRight.x;
             view[1][0] = camRight.y;
             view[2][0] = camRight.z;
@@ -96,16 +97,9 @@ class Player
             view[1][2] = -camForward.y;
             view[2][2] = -camForward.z;
 
-            view[0][3] = 0.0f;
-            view[1][3] = 0.0f;
-            view[2][3] = 0.0f;
-            view[3][3] = 1.0f;
-
-            dot1 = -glm::dot(camRight, camPosition);
-            dot2 = -glm::dot(camUp, camPosition);
-            dot3 = glm::dot(camForward, camPosition);
-
-            return view;
+            dotPos.x = -glm::dot(camRight, camPosition);
+            dotPos.y = -glm::dot(camUp, camPosition);
+            dotPos.z = glm::dot(camForward, camPosition);
         }
 };
 
@@ -113,17 +107,16 @@ class EngineBase
 {
     protected:
         const bool FORCE_OPENGL = false;
-        const bool EAT_MOUSE = false;
+        const bool EAT_MOUSE = true;
 
         using clock = std::chrono::steady_clock;
 
-        std::atomic<double> time;
         const float TPS = 180.0f;
         const float TICK_RATE = 1.0f / TPS;
         const clock::duration UPDATE_DELTA = std::chrono::duration_cast<clock::duration>(std::chrono::duration<double>(TICK_RATE));
 
         std::vector<std::string> modelPaths
-        {
+        {/*
             "models/vedal987/vedal987.gltf",
             "models/vedal987/vedal987.gltf",
             "models/vedal987/vedal987.gltf",
@@ -143,7 +136,8 @@ class EngineBase
             "models/vedal987/vedal987.gltf",
             "models/vedal987/vedal987.gltf",
             "models/vedal987/vedal987.gltf",
-            "models/vedal987/vedal987.gltf",
+            "models/vedal987/vedal987.gltf",*/
+            "models/drums/drums.gltf"
         };
         std::string playerModelFile = "models/vedal987/vedal987.gltf";
 
@@ -212,7 +206,6 @@ class EngineBase
         char titleBuffer[64];
 
         std::array<bool, SDL_SCANCODE_COUNT> keys{};
-        std::atomic<glm::vec2> moveInput;
 
         void setThreadAffinityAndPriority(const int core_id)
         {
@@ -264,7 +257,7 @@ class EngineBase
                 }
             }
         }
-        void inputs()
+        bool inputs()
         {
             glm::vec2 input{0.0, 0.0};
             if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP])    input.y += 1.0f;
@@ -274,9 +267,11 @@ class EngineBase
 
             if (updateCam || input.x != 0.0f || input.y != 0.0f)
             {
-                moveInput.store(input);
+                player.update(input, TICK_RATE);
                 updateCam.store(true, std::memory_order_release);
+                return true;
             }
+            return false;
         }
         void calculateFramerate(clock::time_point currentTime)
         {
@@ -364,17 +359,14 @@ class VulkanEngine: EngineBase
             {
                 clock::time_point now = clock::now();
                 nextTime += UPDATE_DELTA;
-                time = std::chrono::duration<double>(now.time_since_epoch()).count();
 
                 pollEvents();
                 inputs();
 
-                for (int i = 0; i < objectManager.models.size(); i++)
+                while (nextTime <= now)
                 {
-                    objectManager.models[i].transmat = glm::rotate(glm::mat4(1.0f), float(time) * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-                    objectManager.models[i].transmat[3][2] -= 5;
-                    objectManager.models[i].transmat[3][0] += ((i % 5) - 2.0) * 1.3;
-                    objectManager.models[i].transmat[3][1] += int(i/5) * 1.3;
+                    //update(TICK_RATE);
+                    nextTime += UPDATE_DELTA;
                 }
 
                 calculateFramerate(now);
@@ -387,6 +379,10 @@ class VulkanEngine: EngineBase
         VkSemaphore imgRendered = VK_NULL_HANDLE;
         uint32_t imageIndex;
         uint32_t currentFrame = 0;
+
+        glm::mat4 cachedViewRotation;
+        glm::mat4 cachedView;
+        int updateView;
 
         VkSemaphoreSubmitInfo waitInfo
         {
@@ -427,9 +423,6 @@ class VulkanEngine: EngineBase
             renderThread = std::thread([this]()
             {
                 setThreadAffinityAndPriority(1);
-                glm::mat4 cachedViewNoTrans;
-                glm::mat4 cachedView;
-                int updateView;
 
                 while (running)
                 {
@@ -440,22 +433,8 @@ class VulkanEngine: EngineBase
                     if (!acquireImage()) continue;;
                     vkResetFences(deviceManager.device, 1, &fence);
 
-                    if (updateCam.exchange(false))
-                    {
-                        cachedViewNoTrans = player.update(moveInput.load(), TICK_RATE);
-                        cachedView = cachedViewNoTrans;
-                        cachedView[3][0] = player.dot1;
-                        cachedView[3][1] = player.dot2;
-                        cachedView[3][2] = player.dot3;
-                        updateView = MAX_FRAMES_IN_FLIGHT;
-                    }
-                    if (updateView)
-                    {
-                        objectManager.updateView(currentFrame, cachedView);
-                        updateView--;
-                    }
+                    updateUniformBuffers();
 
-                    objectManager.player.transmat = glm::rotate(glm::mat4(1.0f), float(time) * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
                     objectManager.player.transmat[3][0] = player.position.x;
                     objectManager.player.transmat[3][1] = player.position.y;
                     objectManager.player.transmat[3][2] = player.position.z;
@@ -482,6 +461,23 @@ class VulkanEngine: EngineBase
                 throw std::runtime_error("failed to acquire swap chain image!");
             }
             return true;
+        }
+        void updateUniformBuffers()
+        {
+            if (updateCam.exchange(false))
+            {
+                cachedViewRotation = player.view;
+                cachedView = cachedViewRotation;
+                cachedView[3].x = player.dotPos.x;
+                cachedView[3].y = player.dotPos.y;
+                cachedView[3].z = player.dotPos.z;
+                updateView = MAX_FRAMES_IN_FLIGHT;
+            }
+            if (updateView > 0)
+            {
+                objectManager.updateView(currentFrame, cachedView);
+                updateView--;
+            }
         }
         void submitQueue()
         {
@@ -547,14 +543,17 @@ class OpenGLEngine: EngineBase
             SDL_Init(SDL_INIT_VIDEO);
 
             SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+            SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
 
             SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
             SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
 
             SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
             SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
+
+            SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+
 
             window = SDL_CreateWindow("...", WIDTH, HEIGHT, SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
 
@@ -563,9 +562,10 @@ class OpenGLEngine: EngineBase
 
         std::thread renderThread;
 
-        GLuint projPos;
-        GLuint viewPos;
-        GLuint viewNoTransPos;
+        static constexpr int BUFFERCOUNT = 3;
+        std::atomic<uint32_t> currentBuffer = 0;
+
+        GLuint viewUBO, viewRotationUBO;
         GLuint modelPos;
 
         GLuint vaoSkybox;
@@ -582,22 +582,23 @@ class OpenGLEngine: EngineBase
             {
                 clock::time_point now = clock::now();
                 nextTime += UPDATE_DELTA;
-                time = std::chrono::duration<double>(now.time_since_epoch()).count();
 
                 pollEvents();
                 inputs();
 
+                playermodel.transmat[3][0] = player.position.x;
+                playermodel.transmat[3][1] = player.position.y;
+                playermodel.transmat[3][2] = player.position.z;
+
+                while (nextTime <= now)
+                {
+                    inputs();
+                    nextTime += UPDATE_DELTA;
+                }
+
                 //camData.camPos = position;
                 //glBindBuffer(GL_UNIFORM_BUFFER, uboCampos);
                 //glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(camData), &camData);
-
-                for (int i = 0; i < models.size(); i++)
-                {
-                    models[i].transmat = glm::rotate(glm::mat4(1.0f), float(time) * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-                    models[i].transmat[3][2] -= 5;
-                    models[i].transmat[3][0] += ((i % 5) - 2.0) * 1.3;
-                    models[i].transmat[3][1] += int(i/5) * 1.3;
-                }
 
                 calculateFramerate(now);
                 std::this_thread::sleep_until(nextTime);
@@ -615,7 +616,7 @@ class OpenGLEngine: EngineBase
                 int shaderSkybox = makeShader("shaders/openGL/shaderSkybox.vs", "shaders/openGL/shaderSkybox.fs");
 
                 int shaders[2] = {shaderProgram, shaderSkybox};
-                updateUniformBuffer(shaders);
+                createUniformBuffers(shaders);
 
                 glUseProgram(shaderSkybox);
                 setSkyboxShader(shaderSkybox);
@@ -632,24 +633,8 @@ class OpenGLEngine: EngineBase
                     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
                     glUseProgram(shaderProgram);
 
-                    if (updateCam.exchange(false))
-                    {
-                        glm::mat4 viewmat = player.update(moveInput.load(), TICK_RATE);
+                    updateUniformBuffers();
 
-                        glBindBuffer(GL_UNIFORM_BUFFER, viewNoTransPos);
-                        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), &viewmat);
-
-                        viewmat[3][0] = player.dot1;
-                        viewmat[3][1] = player.dot2;
-                        viewmat[3][2] = player.dot3;
-                        glBindBuffer(GL_UNIFORM_BUFFER, viewPos);
-                        glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), &viewmat);
-                    }
-
-                    playermodel.transmat = glm::rotate(glm::mat4(1.0f), float(time) * glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-                    playermodel.transmat[3][0] = player.position.x;
-                    playermodel.transmat[3][1] = player.position.y;
-                    playermodel.transmat[3][2] = player.position.z;
                     glUniformMatrix4fv(modelPos, 1, GL_FALSE, &playermodel.transmat[0][0]);
                     playermodel.drawModel();
 
@@ -699,21 +684,22 @@ class OpenGLEngine: EngineBase
             glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
             SDL_GL_SwapWindow(window);
         }
-        void updateUniformBuffer(int shaders[])
+        void createUniformBuffers(int shaders[])
         {
+            GLuint projUBO;
             glm::mat4 proj = glm::perspective(glm::radians(45.0f), (float) WIDTH / (float) HEIGHT, 0.1f, 50.0f);
             glm::mat4 view = glm::lookAt(glm::vec3(0.0f, 0.0f, 3.0f), glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-            glm::mat4 viewNoTrans = glm::lookAt(glm::vec3(0.0f, 0.0f, 3.0f), glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+            glm::mat4 viewRotation = glm::lookAt(glm::vec3(0.0f, 0.0f, 3.0f), glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
-            glGenBuffers(1, &projPos);
-            glBindBuffer(GL_UNIFORM_BUFFER, projPos);
+            glGenBuffers(1, &projUBO);
+            glBindBuffer(GL_UNIFORM_BUFFER, projUBO);
             glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), &proj, GL_STATIC_DRAW);
-            glGenBuffers(1, &viewPos);
-            glBindBuffer(GL_UNIFORM_BUFFER, viewPos);
+            glGenBuffers(1, &viewUBO);
+            glBindBuffer(GL_UNIFORM_BUFFER, viewUBO);
             glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), &view, GL_DYNAMIC_DRAW);
-            glGenBuffers(1, &viewNoTransPos);
-            glBindBuffer(GL_UNIFORM_BUFFER, viewNoTransPos);
-            glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), &viewNoTrans, GL_DYNAMIC_DRAW);
+            glGenBuffers(1, &viewRotationUBO);
+            glBindBuffer(GL_UNIFORM_BUFFER, viewRotationUBO);
+            glBufferData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), &viewRotation, GL_DYNAMIC_DRAW);
 
             GLuint blockIndex;
             for (int i = 0; i < 2; i++)
@@ -721,18 +707,39 @@ class OpenGLEngine: EngineBase
                 int shader = shaders[i];
                 blockIndex = glGetUniformBlockIndex(shader, "PROJ");
                 glUniformBlockBinding(shader, blockIndex, 0);
-                glBindBufferBase(GL_UNIFORM_BUFFER, 0, projPos);
+                glBindBufferBase(GL_UNIFORM_BUFFER, 0, projUBO);
             }
 
             blockIndex = glGetUniformBlockIndex(shaders[0], "VIEW");
             glUniformBlockBinding(shaders[0], blockIndex, 1);
-            glBindBufferBase(GL_UNIFORM_BUFFER, 1, viewPos);
+            glBindBufferBase(GL_UNIFORM_BUFFER, 1, viewUBO);
 
-            blockIndex = glGetUniformBlockIndex(shaders[1], "VIEWNOTRANS");
+            blockIndex = glGetUniformBlockIndex(shaders[1], "VIEWROTATION");
             glUniformBlockBinding(shaders[1], blockIndex, 2);
-            glBindBufferBase(GL_UNIFORM_BUFFER, 2, viewNoTransPos);
+            glBindBufferBase(GL_UNIFORM_BUFFER, 2, viewRotationUBO);
 
             modelPos = glGetUniformLocation(shaders[0], "model");
+        }
+        void updateUniformBuffers()
+        {
+            if (updateCam.exchange(false))
+            {
+                glm::mat4 viewRotation = player.view;
+                glm::mat4 view = viewRotation;
+                view[3].x = player.dotPos.x;
+                view[3].y = player.dotPos.y;
+                view[3].z = player.dotPos.z;
+
+                glBindBuffer(GL_UNIFORM_BUFFER, viewUBO);
+                glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), &view);
+
+                glBindBuffer(GL_UNIFORM_BUFFER, viewRotationUBO);
+                glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4), &viewRotation);
+
+                playermodel.transmat[3][0] = player.position.x;
+                playermodel.transmat[3][1] = player.position.y;
+                playermodel.transmat[3][2] = player.position.z;
+            }
         }
         void setSkyboxShader(int shader)
         {

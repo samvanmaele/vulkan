@@ -1,9 +1,9 @@
 #include "gl_loadGLTF.hpp"
 #include <iostream>
 #include <ostream>
-
-#define BUFFER_OFFSET(i) ((char *)nullptr + (i))
-std::unordered_map<int, GLuint> textureMap;
+#include <glm/ext/matrix_transform.hpp>
+#include <glm/ext/vector_float3.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 GlModel::GlModel(const char* filename)
 {
@@ -48,14 +48,32 @@ GlModel::~GlModel()
 }
 void GlModel::bindNode(tinygltf::Model& model, const tinygltf::Node& node)
 {
-    if (node.mesh >= 0) bindMesh(model, model.meshes[node.mesh]);
+    if (node.mesh >= 0) bindMesh(model, node);
     for (int child : node.children)
     {
         if (child >= 0) bindNode(model, model.nodes[child]);
     }
 }
-void GlModel::bindMesh(tinygltf::Model& model, tinygltf::Mesh& mesh)
+void GlModel::bindMesh(tinygltf::Model& model, const tinygltf::Node& node)
 {
+    glm::mat4 nodeMatrix = glm::mat4(1.0);
+    if (node.scale.size() == 3)
+    {
+        glm::vec3 S = glm::vec3(node.translation[0], node.translation[1], node.translation[2]);
+        nodeMatrix = glm::scale(nodeMatrix, S);
+    }
+    if (node.rotation.size() == 4)
+    {
+        glm::quat R = glm::quat(node.rotation[3], node.rotation[0], node.rotation[1], node.rotation[2]);
+        nodeMatrix *= glm::mat4_cast(R);
+    }
+    if (node.translation.size() == 3)
+    {
+        glm::vec3 T = glm::vec3(node.translation[0], node.translation[1], node.translation[2]);
+        nodeMatrix = glm::translate(nodeMatrix, T);
+    }
+
+    const tinygltf::Mesh mesh = model.meshes[node.mesh];
     for (const auto& primitive : mesh.primitives)
     {
         GLuint vao;
@@ -64,11 +82,11 @@ void GlModel::bindMesh(tinygltf::Model& model, tinygltf::Mesh& mesh)
 
         for (const auto& attrib : primitive.attributes)
         {
-            if (attrib.first == "POSITION") bindAttrib(model, 0, 3, attrib.second, true);
-            else if (attrib.first == "NORMAL") bindAttrib(model, 1, 3, attrib.second, false);
-            else if (attrib.first == "TEXCOORD_0") bindAttrib(model, 2, 2, attrib.second, false);
-            else if (attrib.first == "JOINTS_0") bindAttrib(model, 3, 4, attrib.second, false);
-            else if (attrib.first == "WEIGHTS_0") bindAttrib(model, 4, 4, attrib.second, false);
+            if (attrib.first == "POSITION") bindPos(model, 0, 3, attrib.second, nodeMatrix);
+            else if (attrib.first == "NORMAL") bindAttrib(model, 1, 3, attrib.second);
+            else if (attrib.first == "TEXCOORD_0") bindAttrib(model, 2, 2, attrib.second);
+            else if (attrib.first == "JOINTS_0") bindAttrib(model, 3, 4, attrib.second);
+            else if (attrib.first == "WEIGHTS_0") bindAttrib(model, 4, 4, attrib.second);
         }
         const auto& accessor = model.accessors[primitive.indices];
         const auto& bufferView = model.bufferViews[accessor.bufferView];
@@ -100,7 +118,47 @@ void GlModel::bindMesh(tinygltf::Model& model, tinygltf::Mesh& mesh)
         primitiveDataList.push_back(std::move(primitiveData));
     }
 }
-void GlModel::bindAttrib(tinygltf::Model& model, int binding, int vecSize, int attribPos, bool collision)
+void GlModel::bindPos(tinygltf::Model& model, int binding, int vecSize, int attribPos, glm::mat4 nodeMatrix)
+{
+    const auto& accessor = model.accessors[attribPos];
+    const auto& bufferView = model.bufferViews[accessor.bufferView];
+    const auto& buffer = model.buffers[bufferView.buffer];
+    const float* rawPosData = reinterpret_cast<const float*>(buffer.data.data() + bufferView.byteOffset);
+
+    std::vector<float> transformedPositions(accessor.count * 3);
+    for (size_t i = 0; i < accessor.count; ++i)
+    {
+        glm::vec4 rawPos(rawPosData[i * 3 + 0], rawPosData[i * 3 + 1], rawPosData[i * 3 + 2], 1.0f);
+        glm::vec4 finalPos = nodeMatrix * rawPos;
+
+        transformedPositions[i * 3 + 0] = finalPos.x;
+        transformedPositions[i * 3 + 1] = finalPos.y;
+        transformedPositions[i * 3 + 2] = finalPos.z;
+    }
+
+    GLuint vbo;
+    glGenBuffers(1, &vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glBufferData(GL_ARRAY_BUFFER, bufferView.byteLength, transformedPositions.data(), GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(binding);
+    glVertexAttribPointer(binding, vecSize, accessor.componentType, GL_FALSE, vecSize*4, (void*)0);
+
+    /*
+    boundingbox box = {};
+    box.min = glm::make_vec3(accessor.minValues.data());
+    box.max = glm::make_vec3(accessor.maxValues.data());
+
+    for (int i = 0; i < 3; i++)
+    {
+        aabb.min[i] = std::min(aabb.min[i], box.min[i]);
+        aabb.max[i] = std::max(aabb.max[i], box.max[i]);
+    }
+
+    boundingboxes.push_back(box);
+    */
+}
+void GlModel::bindAttrib(tinygltf::Model& model, int binding, int vecSize, int attribPos)
 {
     const auto& accessor = model.accessors[attribPos];
     const auto& bufferView = model.bufferViews[accessor.bufferView];
@@ -113,23 +171,6 @@ void GlModel::bindAttrib(tinygltf::Model& model, int binding, int vecSize, int a
 
     glEnableVertexAttribArray(binding);
     glVertexAttribPointer(binding, vecSize, accessor.componentType, GL_FALSE, vecSize*4, (void*)0);
-
-    /*
-    if (collision)
-    {
-        boundingbox box = {};
-        box.min = glm::make_vec3(accessor.minValues.data());
-        box.max = glm::make_vec3(accessor.maxValues.data());
-
-        for (int i = 0; i < 3; i++)
-        {
-            aabb.min[i] = std::min(aabb.min[i], box.min[i]);
-            aabb.max[i] = std::max(aabb.max[i], box.max[i]);
-        }
-
-        boundingboxes.push_back(box);
-    }
-    */
 }
 void GlModel::createTexture(const tinygltf::Image& image, int index)
 {

@@ -9,5 +9,5 @@ void vk_check(VkResult result, const std::string& msg)
     }
 }
 
-int WIDTH = 1000;
-int HEIGHT = 1000;
+int WIDTH = 1920;
+int HEIGHT = 1080;

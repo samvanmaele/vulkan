@@ -1,4 +1,5 @@
 #pragma once
+#include <glm/ext/matrix_float4x4.hpp>
 #include <tinygltf/tiny_gltf.h>
 #include <glm/glm.hpp>
 #include <volk.h>
@@ -51,7 +52,7 @@ class VkModel
         };
         std::vector<PrimitiveData> primitiveDataList;
 
-        glm::mat4 transmat;
+        glm::mat4 transmat = glm::mat4(1.0);
         std::vector<VkBuffer> uniformBuffers;
         std::vector<VkDeviceMemory> uniformBuffersMemory;
         std::vector<void*> uniformBuffersMapped;
@@ -63,7 +64,7 @@ class VkModel
 
     private:
         void bindNode(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, tinygltf::Model& model, const tinygltf::Node& node);
-        void bindMesh(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, tinygltf::Model& model, tinygltf::Mesh& mesh);
+        void bindMesh(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, tinygltf::Model& model, const tinygltf::Node& node);
         AttribDatta getAttrib(tinygltf::Model& model, size_t &vecSize, int attribPos, bool calculatingPositions);
         void createTexture(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, PrimitiveData &primitiveData, const tinygltf::Image& image);
 };

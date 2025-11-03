@@ -5,8 +5,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <glm/ext/matrix_transform.hpp>
+#include <glm/ext/vector_float3.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <iostream>
 #include <numeric>
+#include <ostream>
 #include <utility>
 
 VkModel::VkModel(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, const char* filename)
@@ -56,14 +60,33 @@ void VkModel::destroyAll(VkDevice device)
 
 void VkModel::bindNode(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, tinygltf::Model& model, const tinygltf::Node& node)
 {
-    if (node.mesh >= 0) bindMesh(physicalDevice, device, graphicsQueue, commandPool, model, model.meshes[node.mesh]);
+    if (node.mesh >= 0) bindMesh(physicalDevice, device, graphicsQueue, commandPool, model, node);
     for (int child : node.children)
     {
         if (child >= 0) bindNode(physicalDevice, device, graphicsQueue, commandPool, model, model.nodes[child]);
     }
 }
-void VkModel::bindMesh(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, tinygltf::Model& model, tinygltf::Mesh& mesh)
+void VkModel::bindMesh(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, tinygltf::Model& model, const tinygltf::Node& node)
 {
+    glm::mat4 nodeMatrix = glm::mat4(1.0);
+    if (node.scale.size() == 3)
+    {
+        glm::vec3 S = glm::vec3(node.translation[0], node.translation[1], node.translation[2]);
+        nodeMatrix = glm::scale(nodeMatrix, S);
+    }
+    if (node.rotation.size() == 4)
+    {
+        glm::quat R = glm::quat(node.rotation[3], node.rotation[0], node.rotation[1], node.rotation[2]);
+        nodeMatrix *= glm::mat4_cast(R);
+    }
+    if (node.translation.size() == 3)
+    {
+        glm::vec3 T = glm::vec3(node.translation[0], node.translation[1], node.translation[2]);
+        nodeMatrix = glm::translate(nodeMatrix, T);
+    }
+
+    const tinygltf::Mesh mesh = model.meshes[node.mesh];
+
     for (const auto& primitive : mesh.primitives)
     {
         PrimitiveData primitiveData;
@@ -76,8 +99,22 @@ void VkModel::bindMesh(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue
             else if (attrib.first == "NORMAL") normAttrib = getAttrib(model, vertexCount, attrib.second, false);
             else if (attrib.first == "TEXCOORD_0") texAttrib = getAttrib(model, vertexCount, attrib.second, false);
         }
+
+        const float* rawPosData = reinterpret_cast<const float*>(posAttrib.dataPtr);
+        std::vector<float> transformedPositions(vertexCount * 3);
+        for (size_t i = 0; i < vertexCount; ++i)
+        {
+            glm::vec4 rawPos(rawPosData[i * 3 + 0], rawPosData[i * 3 + 1], rawPosData[i * 3 + 2], 1.0);
+            glm::vec4 finalPos = nodeMatrix * rawPos;
+
+            // Store the transformed position (back to 3 floats)
+            transformedPositions[i * 3 + 0] = finalPos.x;
+            transformedPositions[i * 3 + 1] = finalPos.y;
+            transformedPositions[i * 3 + 2] = finalPos.z;
+        }
+
         primitiveData.vertexCount = vertexCount;
-        BufferManager::stageBuffer(physicalDevice, device, graphicsQueue, commandPool, posAttrib.dataPtr, vertexCount * posAttrib.stride, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, primitiveData.positionBuffer, primitiveData.positionBufferMemory);
+        BufferManager::stageBuffer(physicalDevice, device, graphicsQueue, commandPool, transformedPositions.data(), vertexCount * posAttrib.stride, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, primitiveData.positionBuffer, primitiveData.positionBufferMemory);
 
         if (normAttrib.dataPtr)
         {
@@ -109,6 +146,7 @@ void VkModel::bindMesh(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue
             {
                 int texIndex = material.values.at("baseColorTexture").TextureIndex();
                 primitiveData.textureIndex = texIndex;
+
                 createTexture(physicalDevice, device, graphicsQueue, commandPool, primitiveData, model.images[texIndex]);
             }
         }
@@ -134,8 +172,7 @@ AttribDatta VkModel::getAttrib(tinygltf::Model& model, size_t &vecSize, int attr
 }
 void VkModel::createTexture(VkPhysicalDevice physicalDevice, VkDevice device, VkQueue graphicsQueue, VkCommandPool commandPool, PrimitiveData &primitiveData, const tinygltf::Image& image)
 {
-    int channels = 4;
-    VkDeviceSize imageSize = image.width * image.height * channels;
+    VkDeviceSize imageSize = image.width * image.height * image.component;
 
     VkBuffer stagingBuffer;
     VkDeviceMemory stagingBufferMemory;

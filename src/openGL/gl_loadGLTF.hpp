@@ -64,12 +64,41 @@ class GlModel
 		};
 		std::vector<PrimitiveData> primitiveDataList;
 
-		glm::mat4 transmat;
+		glm::mat4 transmat = glm::mat4(1.0);
+
 		//std::vector<boundingbox> boundingboxes;
 		//boundingbox aabb;
 
 		GlModel() = default;
 		GlModel(const char* filename);
+		GlModel(GlModel&& other) noexcept
+		{
+			primitiveDataList = std::move(other.primitiveDataList);
+			transmat[0] = other.transmat[0];
+			transmat[1] = other.transmat[1];
+			transmat[2] = other.transmat[2];
+			textureMap = std::move(other.textureMap);
+
+			other.primitiveDataList.clear();
+			other.textureMap.clear();
+		}
+
+		GlModel& operator=(GlModel&& other) noexcept
+		{
+			if (this != &other)
+			{
+				primitiveDataList = std::move(other.primitiveDataList);
+				transmat[0] = other.transmat[0];
+				transmat[1] = other.transmat[1];
+				transmat[2] = other.transmat[2];
+				textureMap = std::move(other.textureMap);
+
+				other.primitiveDataList.clear();
+				other.textureMap.clear();
+			}
+			return *this;
+		}
+
 		void drawModel();
 		void drawDepth();
 		~GlModel();
@@ -78,7 +107,8 @@ class GlModel
 		std::unordered_map<int, GLuint> textureMap;
 
 		void bindNode(tinygltf::Model& model, const tinygltf::Node& node);
-		void bindMesh(tinygltf::Model& model, tinygltf::Mesh& mesh);
-		void bindAttrib(tinygltf::Model& model, int binding, int vecSize, int attribPos, bool collision);
+		void bindMesh(tinygltf::Model& model, const tinygltf::Node& node);
+		void bindPos(tinygltf::Model& model, int binding, int vecSize, int attribPos, glm::mat4 nodeMatrix);
+		void bindAttrib(tinygltf::Model& model, int binding, int vecSize, int attribPos);
 		void createTexture(const tinygltf::Image& image, int index);
 };
