@@ -41,7 +41,7 @@
 #include "openGL/gl_shader.hpp"
 #include "openGL/gl_loadGLTF.hpp"
 
-//#include "midi.hpp"
+#include "midi.hpp"
 
 class Player
 {
@@ -106,10 +106,13 @@ class Player
 class EngineBase
 {
     protected:
-        const bool FORCE_OPENGL = false;
-        const bool EAT_MOUSE = true;
+        const bool FORCE_OPENGL = true;
+        const bool EAT_MOUSE = false;
 
         using clock = std::chrono::steady_clock;
+
+        MidiManager midiManager = MidiManager("sfx/blur-song_2.mid");
+        clock::time_point songStartTime = clock::now();
 
         const float TPS = 180.0f;
         const float TICK_RATE = 1.0f / TPS;
@@ -256,8 +259,15 @@ class EngineBase
                         break;
                 }
             }
+
+            clock::time_point currentTime = clock::now();
+            clock::duration elapsedDuration = currentTime - songStartTime;
+            float elapsedSeconds = std::chrono::duration<float>(elapsedDuration).count();
+
+            glm::vec4 drumAnimation = midiManager.getEvent(elapsedSeconds);
+            std::cout << drumAnimation.x << " " << drumAnimation.y << " " << drumAnimation.z << " " << drumAnimation.w << std::endl;
         }
-        bool inputs()
+        void inputs()
         {
             glm::vec2 input{0.0, 0.0};
             if (keys[SDL_SCANCODE_W] || keys[SDL_SCANCODE_UP])    input.y += 1.0f;
@@ -269,9 +279,7 @@ class EngineBase
             {
                 player.update(input, TICK_RATE);
                 updateCam.store(true, std::memory_order_release);
-                return true;
             }
-            return false;
         }
         void calculateFramerate(clock::time_point currentTime)
         {
